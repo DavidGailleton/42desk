@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wrapper around JuNest, installed to ~/.local/bin/junest by install.sh.
+# Wrapper around JuNest, installed to ~/.local/bin/junest by 42desk.
 # Reads ~/.config/42-junest/config, keeps caches in /tmp/$USER, adds the host
 # passthrough binds and exposes the NVIDIA libraries matching the host driver.
 REAL="$HOME/.local/share/junest/bin/junest"

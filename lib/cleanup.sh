@@ -43,7 +43,7 @@ cleanup_old() {
             die "$p is not empty and is not a JuNest rootfs, pick another path"
         fi
     done
-    for p in "$JUNEST_SRC" "$BIN_DIR"/{junest,junest-nvidia,prime-run} \
+    for p in "$JUNEST_SRC" "$BIN_DIR"/{junest,junest-nvidia,junest-session,42desk,prime-run} \
         "$HOME/.local/share/junest-nvidia" "$GOINFRE"/{pacman-cache,junest-nvidia}; do
         [[ -e $p || -L $p ]] && other+=("$p")
     done

@@ -15,9 +15,16 @@ install_junest() {
 }
 
 install_wrappers() {
+    local f
     log "installing wrappers to $BIN_DIR"
     mkdir -p "$BIN_DIR"
-    install -m 755 "$REPO_DIR"/bin/* "$BIN_DIR/"
+    for f in "$REPO_DIR"/bin/*; do
+        [[ $(basename "$f") == 42desk ]] || install -m 755 "$f" "$BIN_DIR/"
+    done
+    # 42desk needs its lib/ and catalogs: a launcher into this repo.
+    printf '#!/bin/sh\n# 42desk launcher, written by install_wrappers.\nexec %q "$@"\n' \
+        "$REPO_DIR/bin/42desk" >"$BIN_DIR/42desk"
+    chmod 755 "$BIN_DIR/42desk"
 }
 
 setup_rootfs() {

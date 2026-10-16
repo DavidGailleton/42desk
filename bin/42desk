@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# 42desk: installs and manages a custom JuNest desktop on 42 computers.
+# ~/.local/bin/42desk is a launcher that runs this file from the repo it was
+# installed from. Run 42desk --help for the commands.
+set -euo pipefail
+
+REPO_DIR=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+# shellcheck source=lib/common.sh
+. "$REPO_DIR/lib/common.sh"
+# shellcheck source=lib/cleanup.sh
+. "$REPO_DIR/lib/cleanup.sh"
+# shellcheck source=lib/junest.sh
+. "$REPO_DIR/lib/junest.sh"
+# shellcheck source=lib/guest.sh
+. "$REPO_DIR/lib/guest.sh"
+# shellcheck source=lib/desktop.sh
+. "$REPO_DIR/lib/desktop.sh"
+# shellcheck source=lib/apps.sh
+. "$REPO_DIR/lib/apps.sh"
+# shellcheck source=lib/folders.sh
+. "$REPO_DIR/lib/folders.sh"
+# shellcheck source=lib/apps42.sh
+. "$REPO_DIR/lib/apps42.sh"
+# shellcheck source=lib/cli.sh
+. "$REPO_DIR/lib/cli.sh"
+
+main "$@"

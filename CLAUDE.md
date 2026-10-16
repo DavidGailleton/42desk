@@ -13,12 +13,13 @@ An interactive Bash script (whiptail menus) that sets up a customized [JuNest](h
 5. When both a desktop environment and an app in a category are selected, which app is the default for that category.
 6. Which 42-specific apps should be available inside JuNest.
 
-Done so far: the base install, step 1 (the desktop choice: i3, bspwm, awesome or XFCE, all native X11) and steps 3–6: host folders, apps by category, the default app per role, and the 42 apps (norminette, 42 header). Step 2 (rice) is left; `42_bspwm_dotfile/` (an untracked separate repo) is its likely source. Don't carry over its `LD_PRELOAD` trick against `ft_lock`'s timers. Hyprland and other Wayland compositors can't work here: GDM's Xorg owns the GPU, and Hyprland has no X11 backend.
+Done so far: the `42desk` command and control center, the base install, step 1 (the desktop choice: i3, bspwm, awesome or XFCE, all native X11) and steps 3–6: host folders, apps by category, the default app per role, and the 42 apps (norminette, 42 header). Step 2 (rice) is left; `42_bspwm_dotfile/` (an untracked separate repo) is its likely source. Don't carry over its `LD_PRELOAD` trick against `ft_lock`'s timers. Hyprland and other Wayland compositors can't work here: GDM's Xorg owns the GPU, and Hyprland has no X11 backend.
 
 ## Commands
 
-- Install (fresh: wipes any previous setup after a confirmation): `./install.sh [--rootfs PATH] [--desktop ID|none] [--yes]`
-- Re-run one step on the existing install: `./install.sh --step desktop [--desktop i3|bspwm|awesome|xfce|none]`; also `--step folders`, `--step apps`, `--step 42apps`. The full install runs folders → desktop → apps → 42apps.
+- Control center (whiptail menu): `42desk`, or `bin/42desk` from the repo. `42desk status` prints the setup; `42desk --help` lists the commands.
+- Install (fresh: wipes any previous setup after a confirmation): `./install.sh [--rootfs PATH] [--desktop ID|none] [--yes]`, the same as `bin/42desk install …`.
+- Re-run one step on the existing install: `42desk configure desktop [--desktop i3|bspwm|awesome|xfce|none]`; also `configure folders`, `configure apps`, `configure 42apps`. `./install.sh --step X` is an alias. The full install runs folders → desktop → apps → 42apps.
 - Test the apps step without menus: `APPS_PRESET="alacritty firefox" ./install.sh --step apps --yes`. The preset only applies with `--yes`; the same goes for `FOLDERS_PRESET` and `FT_PRESET`.
 - Try the configured desktop without logging out: `Xephyr :5 -screen 1600x900 & DISPLAY=:5 junest-session --nested` (`--nested` skips the systemd user units). The log is in `/tmp/$USER/desktop.log`.
 - Lint: `shellcheck -x install.sh lib/*.sh bin/* guest/* share/xsessionrc desktops/*.conf`. shellcheck isn't on the host; get the static release binary into `/tmp/$USER/tools`.
@@ -27,8 +28,11 @@ Done so far: the base install, step 1 (the desktop choice: i3, bspwm, awesome or
 
 ## Architecture
 
-- `install.sh` sources `lib/*.sh` (`common`, then `cleanup`, `junest`, `guest`, `desktop`, `apps`, `folders`, `apps42`) and runs the steps in order. The `lib` files only define functions and constants.
-- `bin/` holds scripts that get **installed** to `~/.local/bin`, not run from the repo:
+- `bin/42desk` is the program. It sources `lib/*.sh` (`common`, then `cleanup`, `junest`, `guest`, `desktop`, `apps`, `folders`, `apps42`, and `cli` last, which holds the commands and `main`). The `lib` files only define functions and constants. `install.sh` just execs `bin/42desk install`.
+  - `~/.local/bin/42desk` is a two-line launcher into the repo it was installed from (written by `install_wrappers`), because 42desk needs `lib/` and the catalogs. Public installs are planned to live in `~/.local/share/42desk` (cloned by a bootstrap script).
+  - The menu runs each action in a subshell, so a `die` or "aborted" brings the menu back.
+  - `CONFIG_VERSION` in the config; `migrate_config` brings older configs up to `CONFIG_SCHEMA`. Never give a script global the same name as a config key: `config_get` sources the config in a subshell that inherits the globals, so an unset key would read the global.
+- The other `bin/` scripts get **copied** to `~/.local/bin` and run from there:
   - `junest`: the wrapper users actually call. It sources `~/.config/42-junest/config` (`JUNEST_HOME`, plus the `BINDS` array of host paths bound at the same place), then calls the pinned JuNest clone in `~/.local/share/junest`.
   - `junest-nvidia`: prepares the NVIDIA libraries (see below).
   - `junest-session`: starts the configured desktop on `$DISPLAY` (see the session flow below).

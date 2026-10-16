@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Starts the configured JuNest desktop on the current X display. Installed to
-# ~/.local/bin by install.sh and run at login from ~/.xsessionrc; exits with
+# ~/.local/bin by 42desk and run at login from ~/.xsessionrc; exits with
 # the desktop's status. To try it in a nested X server without touching the
 # login session's user services: Xephyr :5 & DISPLAY=:5 junest-session --nested
 set -uo pipefail

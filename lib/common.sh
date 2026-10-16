@@ -1,4 +1,4 @@
-# Shared constants and helpers. Sourced by install.sh, never run directly.
+# Shared constants and helpers. Sourced by bin/42desk, never run directly.
 # shellcheck shell=bash disable=SC2034  # constants used by the other libs
 
 JUNEST_VERSION=7.4.10
@@ -11,7 +11,7 @@ DEFAULT_ROOTFS=$HOME/.junest
 TMP_ROOT=/tmp/$USER
 GOINFRE=/goinfre/$USER
 
-# Set by install.sh flags.
+# Set by the --yes flag.
 ASSUME_YES=${ASSUME_YES:-0}
 
 if [[ -t 1 ]]; then
@@ -136,7 +136,7 @@ _config_write_line() {
     local tmp
     mkdir -p "$CONFIG_DIR"
     [[ -e $CONFIG_FILE ]] ||
-        echo "# Written by 42_custom_desktop/install.sh, read by ~/.local/bin/junest." >"$CONFIG_FILE"
+        echo "# Written by 42desk, read by ~/.local/bin/junest." >"$CONFIG_FILE"
     tmp=$(mktemp "$CONFIG_FILE.XXXXXX")
     # Through ENVIRON: awk -v would eat the backslashes of the %q quoting.
     KEY=$1 LINE=$2 awk '
