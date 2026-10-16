@@ -19,6 +19,10 @@ Commands:
   profile import P       apply profile P (a file, saved, or a bundled name) to the install
   profile list           the bundled profiles
   status                 show the current setup
+  update [--self-only|--no-self]
+                         update 42desk, the JuNest system and the NVIDIA libraries
+  doctor [--fix]         check the setup; --fix repairs what it can (marked *)
+  uninstall              remove everything 42desk installed (your own files come back)
 
 Options:
   --rootfs PATH          install: where to create the rootfs (otherwise asked)
@@ -31,10 +35,11 @@ EOF
     exit "${1:-0}"
 }
 
-ROOTFS="" DESKTOP_CHOICE="" RICE_CHOICE="" PROFILE_ARG=""
+ROOTFS="" DESKTOP_CHOICE="" RICE_CHOICE="" PROFILE_ARG="" UPDATE_SELF=all DOCTOR_FIX=0
 
 # parse_options <arg>...: global options; the other words land in ARGS.
 ARGS=()
+# shellcheck disable=SC2034  # the flags are read by lib/maint.sh and lib/rice.sh
 parse_options() {
     while (($#)); do
         case "$1" in
@@ -47,6 +52,9 @@ parse_options() {
             -y|--yes) ASSUME_YES=1; shift ;;
             -h|--help) usage ;;
             --list) ARGS+=("$1"); shift ;;  # rice --list
+            --fix) DOCTOR_FIX=1; shift ;;
+            --self-only) UPDATE_SELF=only; shift ;;
+            --no-self) UPDATE_SELF=no; shift ;;
             -*) warn "unknown option: $1"; usage 1 ;;
             *) ARGS+=("$1"); shift ;;
         esac
@@ -302,10 +310,16 @@ cmd_menu() {
                 folders "Change the host folders visible in JuNest"
                 42apps  "Change the 42 apps (norminette, 42 header)"
                 profile "Save or apply a profile (whole setup in one file)"
+                update  "Update 42desk, the JuNest system and the NVIDIA libraries"
+                doctor  "Check the setup and fix problems"
                 install "Reinstall from scratch"
+                uninstall "Remove everything 42desk installed"
             )
         else
-            items+=(install "Install JuNest and a custom desktop")
+            items+=(
+                install "Install JuNest and a custom desktop"
+                doctor  "Check why it isn't installed or doesn't work"
+            )
             last=install
         fi
         items+=(quit "Quit")
@@ -317,6 +331,9 @@ cmd_menu() {
             status) _wt --title "Status" --msgbox "$(status_text)" 0 0 || true; continue ;;
             install) (cmd_install) || rc=$? ;;
             profile) (profile_menu) || rc=$? ;;
+            update) (cmd_update) || rc=$? ;;
+            doctor) (doctor_menu) || rc=$?; continue ;;
+            uninstall) (cmd_uninstall) || rc=$? ;;
             *) (cmd_configure "$choice") || rc=$? ;;
         esac
         if ((rc)); then
@@ -341,6 +358,9 @@ main() {
         status)    cmd_status ;;
         rice)      cmd_rice "$@" ;;
         profile)   cmd_profile "$@" ;;
+        update)    cmd_update ;;
+        doctor)    cmd_doctor ;;
+        uninstall) require_whiptail; cmd_uninstall ;;
         help)      usage ;;
         *) warn "unknown command: $cmd"; usage 1 ;;
     esac

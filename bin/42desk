@@ -25,6 +25,8 @@ REPO_DIR=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
 . "$REPO_DIR/lib/rice.sh"
 # shellcheck source=lib/profile.sh
 . "$REPO_DIR/lib/profile.sh"
+# shellcheck source=lib/maint.sh
+. "$REPO_DIR/lib/maint.sh"
 # shellcheck source=lib/cli.sh
 . "$REPO_DIR/lib/cli.sh"
 
