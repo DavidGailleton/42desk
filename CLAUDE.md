@@ -13,13 +13,13 @@ An interactive Bash script (whiptail menus) that sets up a customized [JuNest](h
 5. When both a desktop environment and an app in a category are selected, which app is the default for that category.
 6. Which 42-specific apps should be available inside JuNest.
 
-Done so far: the base install, step 1 (the desktop choice: i3, bspwm, awesome or XFCE, all native X11) and steps 4–5 (apps by category, and the default app per role). Hyprland and other Wayland compositors can't work here: GDM's Xorg owns the GPU, and Hyprland has no X11 backend.
+Done so far: the base install, step 1 (the desktop choice: i3, bspwm, awesome or XFCE, all native X11) and steps 3–6: host folders, apps by category, the default app per role, and the 42 apps (norminette, 42 header). Step 2 (rice) is left; `42_bspwm_dotfile/` (an untracked separate repo) is its likely source. Don't carry over its `LD_PRELOAD` trick against `ft_lock`'s timers. Hyprland and other Wayland compositors can't work here: GDM's Xorg owns the GPU, and Hyprland has no X11 backend.
 
 ## Commands
 
 - Install (fresh: wipes any previous setup after a confirmation): `./install.sh [--rootfs PATH] [--desktop ID|none] [--yes]`
-- Re-run one step on the existing install: `./install.sh --step desktop [--desktop i3|bspwm|awesome|xfce|none]` or `./install.sh --step apps`
-- Test the apps step without menus: `APPS_PRESET="alacritty firefox" ./install.sh --step apps --yes`. The preset only applies with `--yes`.
+- Re-run one step on the existing install: `./install.sh --step desktop [--desktop i3|bspwm|awesome|xfce|none]`; also `--step folders`, `--step apps`, `--step 42apps`. The full install runs folders → desktop → apps → 42apps.
+- Test the apps step without menus: `APPS_PRESET="alacritty firefox" ./install.sh --step apps --yes`. The preset only applies with `--yes`; the same goes for `FOLDERS_PRESET` and `FT_PRESET`.
 - Try the configured desktop without logging out: `Xephyr :5 -screen 1600x900 & DISPLAY=:5 junest-session --nested` (`--nested` skips the systemd user units). The log is in `/tmp/$USER/desktop.log`.
 - Lint: `shellcheck -x install.sh lib/*.sh bin/* guest/* share/xsessionrc desktops/*.conf`. shellcheck isn't on the host; get the static release binary into `/tmp/$USER/tools`.
 - Use the environment: `junest` (shell), `junest -- <cmd>`, `junest -f -- pacman ...` (fakeroot)
@@ -27,7 +27,7 @@ Done so far: the base install, step 1 (the desktop choice: i3, bspwm, awesome or
 
 ## Architecture
 
-- `install.sh` sources `lib/*.sh` (`common`, then `cleanup`, `junest`, `guest`, `desktop`, `apps`) and runs the steps in order. The `lib` files only define functions and constants.
+- `install.sh` sources `lib/*.sh` (`common`, then `cleanup`, `junest`, `guest`, `desktop`, `apps`, `folders`, `apps42`) and runs the steps in order. The `lib` files only define functions and constants.
 - `bin/` holds scripts that get **installed** to `~/.local/bin`, not run from the repo:
   - `junest`: the wrapper users actually call. It sources `~/.config/42-junest/config` (`JUNEST_HOME`, plus the `BINDS` array of host paths bound at the same place), then calls the pinned JuNest clone in `~/.local/share/junest`.
   - `junest-nvidia`: prepares the NVIDIA libraries (see below).
@@ -46,6 +46,14 @@ Done so far: the base install, step 1 (the desktop choice: i3, bspwm, awesome or
   - Defaults go to `~/.config/<desktop name, lowercase>-mimeapps.list`, never to `mimeapps.list`. The home is shared with GNOME, and this per-desktop file only applies when `XDG_CURRENT_DESKTOP` is ours.
   - `write_defaults` deletes only the files that carry its own header. It runs again after a desktop switch.
   - The terminal and browser binaries are stored as `APP_TERMINAL`/`APP_BROWSER`; `junest-session` exports them as `TERMINAL`/`BROWSER`.
+- **Host folders** (`lib/folders.sh`) are stored in `BINDS=(...)` (`config_set_array`/`config_get_array`). The wrapper binds them with `--bind-try` at the next start.
+  - With no `BINDS`, or an empty one, `/goinfre/$USER` and `/sgoinfre/$USER` start checked. The home's `~/goinfre` and `~/sgoinfre` symlinks point there, and they dangle without the bind.
+  - `check_folder` refuses system paths, `/`, paths with spaces or `..`, anything already visible (`/tmp`, the home), and anything that contains or is inside the rootfs.
+  - Missing folders (e.g. `/media` with no USB key plugged in) are kept; bwrap skips them.
+- **42 apps** (`lib/apps42.sh`): the host's tools can't run in the guest, so they're rebuilt there. `FT_APPS` in the config lists them.
+  - **norminette:** a venv in `/opt/42/norminette`, pinned to the host's `norminette -v` version, plus a `/usr/local/bin` link. `ft_apps_packages` keeps `python` out of the apps step's removals.
+  - **header42:** 42Paris' `stdheader.vim`, plus `42header-user.vim` (`g:user42`/`g:mail42`, with the mail domain taken from the sgoinfre NFS server). Both go into `~/.vim/plugin` and `~/.config/nvim/plugin`, which the host's vim shares. Files carry a marker line; only marked files are replaced or removed.
+  - examshell is deliberately not offered.
 - **All questions use whiptail** (`ask_menu`, `ask_checklist`, `ask_radiolist`, `ask_yesno`, `ask_input` in `lib/common.sh`). There's no plain-text fallback.
   - whiptail draws on stderr, because stdout is captured by `$(...)`. `require_whiptail` therefore checks stdin and stderr, not stdout.
   - `--yes` never prompts. It keeps the items given as ON, or the current choice.

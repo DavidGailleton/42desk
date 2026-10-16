@@ -203,6 +203,7 @@ setup_apps() {
     done
     # Packages still needed by something else stay: base, desktop, other apps.
     keep=("${BASE_PACKAGES[@]}" "${DESKTOP_COMMON[@]}" "${install[@]}")
+    mapfile -t -O "${#keep[@]}" keep < <(ft_apps_packages)
     desktop=$(config_get DESKTOP)
     if [[ -n $desktop && -f $DESKTOP_DIR/$desktop.conf ]]; then
         read -ra desktop_pkgs <<<"$(desktop_field "$desktop" PACKAGES)"

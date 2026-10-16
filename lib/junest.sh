@@ -1,11 +1,10 @@
 # Fetches JuNest, installs our wrappers and creates the rootfs.
 # shellcheck shell=bash
 
-# write_config <rootfs>: sets JUNEST_HOME, keeps every other key (BINDS, ...).
+# write_config <rootfs>: sets JUNEST_HOME, keeps every other key. BINDS is
+# left to the folders step: no BINDS key means "never asked" (defaults apply).
 write_config() {
     config_set JUNEST_HOME "$1"
-    # BINDS: host folders bound at the same path inside JuNest.
-    grep -q '^BINDS=' "$CONFIG_FILE" || echo 'BINDS=()' >>"$CONFIG_FILE"
 }
 
 install_junest() {

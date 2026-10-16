@@ -111,14 +111,35 @@ free_gib() {
 # config_set <KEY> <value>: sets KEY=value (shell-quoted) in the config file,
 # replacing an existing KEY= line or appending one. Other lines are kept.
 config_set() {
-    local key=$1 line tmp
-    line="$key=$(printf '%q' "$2")"
+    _config_write_line "$1" "$1=$(printf '%q' "$2")"
+}
+
+# config_set_array <KEY> [<value>...]: sets KEY=(v1 v2 ...), each shell-quoted.
+config_set_array() {
+    local key=$1 vals=""
+    shift
+    (($#)) && vals=$(printf '%q ' "$@")
+    _config_write_line "$key" "$key=(${vals% })"
+}
+
+# config_has <KEY>: true if the config file sets KEY at all.
+config_has() { [[ -r $CONFIG_FILE ]] && grep -q "^$1=" "$CONFIG_FILE"; }
+
+# config_get_array <KEY>: prints the elements of the array KEY, one per line.
+config_get_array() {
+    [[ -r $CONFIG_FILE ]] || return 0
+    # shellcheck source=/dev/null
+    (. "$CONFIG_FILE" && eval '((${#'"$1"'[@]})) && printf "%s\n" "${'"$1"'[@]}"') || true
+}
+
+_config_write_line() {
+    local tmp
     mkdir -p "$CONFIG_DIR"
     [[ -e $CONFIG_FILE ]] ||
         echo "# Written by 42_custom_desktop/install.sh, read by ~/.local/bin/junest." >"$CONFIG_FILE"
     tmp=$(mktemp "$CONFIG_FILE.XXXXXX")
     # Through ENVIRON: awk -v would eat the backslashes of the %q quoting.
-    KEY=$key LINE=$line awk '
+    KEY=$1 LINE=$2 awk '
         index($0, ENVIRON["KEY"] "=") == 1 { if (!done) print ENVIRON["LINE"]; done = 1; next }
         { print }
         END { if (!done) print ENVIRON["LINE"] }' "$CONFIG_FILE" >"$tmp"
