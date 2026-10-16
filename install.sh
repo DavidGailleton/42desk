@@ -2,10 +2,10 @@
 # Fresh base install of a JuNest environment for 42 computers.
 #
 # Usage: ./install.sh [--rootfs PATH] [--desktop ID|none] [--yes]
-#        ./install.sh --step desktop [--desktop ID|none]
+#        ./install.sh --step desktop|apps [--desktop ID|none]
 #   --rootfs PATH     where to create the rootfs (otherwise asked)
 #   --desktop ID      desktop to set up (i3, bspwm, awesome, xfce or none; otherwise asked)
-#   --step desktop    only (re)run that step on the existing install
+#   --step NAME       only (re)run that step (desktop or apps) on the existing install
 #   -y, --yes         answer yes / take defaults for every question
 set -euo pipefail
 
@@ -20,6 +20,8 @@ REPO_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$REPO_DIR/lib/guest.sh"
 # shellcheck source=lib/desktop.sh
 . "$REPO_DIR/lib/desktop.sh"
+# shellcheck source=lib/apps.sh
+. "$REPO_DIR/lib/apps.sh"
 
 usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
@@ -84,6 +86,8 @@ summary() {
     printf '  start with:  junest\n'
 }
 
+require_whiptail
+
 # Single step on the existing install.
 if [[ -n $STEP ]]; then
     ROOTFS=$(config_get JUNEST_HOME)
@@ -94,6 +98,7 @@ if [[ -n $STEP ]]; then
     configure_timezone "$ROOTFS"
     case "$STEP" in
         desktop) setup_desktop "$ROOTFS" "$DESKTOP_CHOICE" ;;
+        apps) setup_apps "$ROOTFS" ;;
         *) die "unknown step: $STEP" ;;
     esac
     exit 0
@@ -122,6 +127,7 @@ if [[ -r /sys/module/nvidia/version ]]; then
 fi
 
 setup_desktop "$ROOTFS" "$DESKTOP_CHOICE"
+setup_apps "$ROOTFS"
 
 trim_rootfs "$ROOTFS"
 summary

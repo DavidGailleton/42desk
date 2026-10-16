@@ -83,6 +83,7 @@ setup_desktop() {
         config_set DESKTOP ""
         config_set DESKTOP_START ""
         config_set DESKTOP_NAME ""
+        write_defaults
         return 0
     fi
 
@@ -97,6 +98,8 @@ setup_desktop() {
     config_set DESKTOP "$choice"
     config_set DESKTOP_START "$(desktop_field "$choice" START)"
     config_set DESKTOP_NAME "$(desktop_field "$choice" NAME)"
+    # Default apps (apps step) follow the desktop's name.
+    write_defaults
     trim_rootfs "$rootfs"
     log "$(desktop_field "$choice" NAME) starts at the next login (Ctrl+Alt+L locks)"
 }

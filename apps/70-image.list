@@ -1,0 +1,6 @@
+# name: Image viewer
+# role: image
+# id | packages | description
+feh   | feh   | minimal viewer, also sets wallpapers
+nsxiv | nsxiv | keyboard-driven image viewer
+eog   | eog   | GNOME image viewer

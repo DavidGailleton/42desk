@@ -24,52 +24,72 @@ log()  { printf '%s==>%s %s\n' "$_c_info" "$_c_off" "$*" >&2; }
 warn() { printf '%s==> warning:%s %s\n' "$_c_warn" "$_c_off" "$*" >&2; }
 die()  { printf '%s==> error:%s %s\n' "$_c_err" "$_c_off" "$*" >&2; exit 1; }
 
-have_whiptail() { [[ -t 0 && -t 1 ]] && command -v whiptail >/dev/null; }
-
-# ask_yesno <title> <message>: 0 for yes. --yes answers yes to everything.
-ask_yesno() {
-    local title=$1 msg=$2 reply
+# Every question goes through whiptail. It draws on stderr (stdout is often
+# captured by $(...)), so stdin and stderr must be a terminal. --yes never asks.
+require_whiptail() {
     ((ASSUME_YES)) && return 0
-    if have_whiptail; then
-        whiptail --title "$title" --yesno "$msg" 0 0
-        return
-    fi
-    printf '%s\n%s [y/N] ' "$title" "$msg" >&2
-    read -r reply
-    [[ $reply == [yY]* ]]
+    command -v whiptail >/dev/null || die "whiptail is required for the questions (or use --yes)"
+    [[ -t 0 && -t 2 ]] || die "run this from a terminal to answer the questions (or use --yes)"
 }
 
-# ask_menu <title> <message> <default-tag> <tag> <label> [<tag> <label>...]
-# Prints the chosen tag. --yes picks the default.
+# whiptail with its answer on stdout and its screen on stderr.
+_wt() { whiptail "$@" 3>&1 1>&2 2>&3; }
+
+# ask_yesno <title> <message>: 0 for yes. --yes answers yes.
+ask_yesno() {
+    ((ASSUME_YES)) && return 0
+    require_whiptail
+    _wt --title "$1" --yesno "$2" 0 0
+}
+
+# ask_menu <title> <message> <default-tag> <tag> <label>...: prints the chosen tag.
+# --yes picks the default.
 ask_menu() {
-    local title=$1 msg=$2 def=$3 reply i
+    local title=$1 msg=$2 def=$3
     shift 3
     if ((ASSUME_YES)); then echo "$def"; return 0; fi
-    if have_whiptail; then
-        whiptail --title "$title" --default-item "$def" --menu "$msg" 0 0 0 "$@" 3>&1 1>&2 2>&3
-        return
-    fi
-    local items=("$@")
-    printf '%s\n%s\n' "$title" "$msg" >&2
-    for ((i = 0; i < ${#items[@]}; i += 2)); do
-        printf '  %s) %s\n' "${items[i]}" "${items[i + 1]}" >&2
-    done
-    printf 'Choice [%s]: ' "$def" >&2
-    read -r reply
-    echo "${reply:-$def}"
+    require_whiptail
+    _wt --title "$title" --default-item "$def" --menu "$msg" 0 0 0 "$@"
 }
 
 # ask_input <title> <message> <default>: prints the entered text.
 ask_input() {
-    local title=$1 msg=$2 def=$3 reply
-    if ((ASSUME_YES)); then echo "$def"; return 0; fi
-    if have_whiptail; then
-        whiptail --title "$title" --inputbox "$msg" 0 0 "$def" 3>&1 1>&2 2>&3
-        return
+    if ((ASSUME_YES)); then echo "$3"; return 0; fi
+    require_whiptail
+    _wt --title "$1" --inputbox "$2" 0 0 "$3"
+}
+
+# ask_checklist <title> <message> <tag> <label> <ON|OFF>...: prints the
+# checked tags, one per line. --yes keeps the items given as ON.
+ask_checklist() {
+    local title=$1 msg=$2 i
+    shift 2
+    if ((ASSUME_YES)); then
+        local items=("$@")
+        for ((i = 0; i < ${#items[@]}; i += 3)); do
+            [[ ${items[i + 2]} == ON ]] && echo "${items[i]}"
+        done
+        return 0
     fi
-    printf '%s\n%s [%s]: ' "$title" "$msg" "$def" >&2
-    read -r reply
-    echo "${reply:-$def}"
+    require_whiptail
+    _wt --title "$title" --separate-output --checklist "$msg" 0 0 0 "$@"
+}
+
+# ask_radiolist <title> <message> <tag> <label> <ON|OFF>...: prints the chosen
+# tag. --yes keeps the item given as ON (or the first one).
+ask_radiolist() {
+    local title=$1 msg=$2 i
+    shift 2
+    if ((ASSUME_YES)); then
+        local items=("$@")
+        for ((i = 0; i < ${#items[@]}; i += 3)); do
+            [[ ${items[i + 2]} == ON ]] && { echo "${items[i]}"; return 0; }
+        done
+        echo "${items[0]}"
+        return 0
+    fi
+    require_whiptail
+    _wt --title "$title" --radiolist "$msg" 0 0 0 "$@"
 }
 
 # Creates /tmp/$USER (mode 700) and refuses one owned by someone else.
@@ -97,10 +117,11 @@ config_set() {
     [[ -e $CONFIG_FILE ]] ||
         echo "# Written by 42_custom_desktop/install.sh, read by ~/.local/bin/junest." >"$CONFIG_FILE"
     tmp=$(mktemp "$CONFIG_FILE.XXXXXX")
-    awk -v key="$key" -v line="$line" '
-        index($0, key "=") == 1 { if (!done) print line; done = 1; next }
+    # Through ENVIRON: awk -v would eat the backslashes of the %q quoting.
+    KEY=$key LINE=$line awk '
+        index($0, ENVIRON["KEY"] "=") == 1 { if (!done) print ENVIRON["LINE"]; done = 1; next }
         { print }
-        END { if (!done) print line }' "$CONFIG_FILE" >"$tmp"
+        END { if (!done) print ENVIRON["LINE"] }' "$CONFIG_FILE" >"$tmp"
     mv "$tmp" "$CONFIG_FILE"
 }
 

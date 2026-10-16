@@ -1,0 +1,7 @@
+# name: Terminal
+# role: terminal
+# id | packages | description
+alacritty      | alacritty      | fast GPU-accelerated terminal
+kitty          | kitty          | GPU terminal with tabs and splits
+wezterm        | wezterm        | GPU terminal with built-in multiplexer
+xfce4-terminal | xfce4-terminal | classic GTK terminal

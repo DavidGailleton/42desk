@@ -10,7 +10,7 @@ NESTED=0
 
 CONFIG="$HOME/.config/42-junest/config"
 TMP_ROOT="/tmp/$USER"
-DESKTOP="" DESKTOP_START="" DESKTOP_NAME=""
+DESKTOP="" DESKTOP_START="" DESKTOP_NAME="" APP_TERMINAL="" APP_BROWSER=""
 # shellcheck source=/dev/null
 [[ -r $CONFIG ]] && . "$CONFIG"
 [[ -n $DESKTOP_START ]] || { echo "junest-session: no desktop configured" >&2; exit 1; }
@@ -36,6 +36,9 @@ export XDG_SESSION_DESKTOP=$DESKTOP DESKTOP_SESSION=$DESKTOP
 # The accessibility bus can't start in JuNest (dbus-broker wants the journal);
 # without this every GTK app retries it.
 export NO_AT_BRIDGE=1 GTK_A11Y=none
+# Default apps chosen in the apps step (x-terminal-emulator, xdg-open, ...).
+[[ -n $APP_TERMINAL ]] && export TERMINAL=$APP_TERMINAL
+[[ -n $APP_BROWSER ]] && export BROWSER=$APP_BROWSER
 
 # On a computer where the NVIDIA libs are not prepared yet, the desktop would
 # fall back to software rendering: prepare them now, with a progress window.

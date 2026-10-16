@@ -13,12 +13,13 @@ An interactive Bash script (whiptail menus) that sets up a customized [JuNest](h
 5. When both a desktop environment and an app in a category are selected, which app is the default for that category.
 6. Which 42-specific apps should be available inside JuNest.
 
-Done so far: the base install and step 1 (the desktop choice: i3, bspwm, awesome or XFCE, all native X11). Hyprland and other Wayland compositors can't work here: GDM's Xorg owns the GPU, and Hyprland has no X11 backend.
+Done so far: the base install, step 1 (the desktop choice: i3, bspwm, awesome or XFCE, all native X11) and steps 4–5 (apps by category, and the default app per role). Hyprland and other Wayland compositors can't work here: GDM's Xorg owns the GPU, and Hyprland has no X11 backend.
 
 ## Commands
 
 - Install (fresh: wipes any previous setup after a confirmation): `./install.sh [--rootfs PATH] [--desktop ID|none] [--yes]`
-- Re-run one step on the existing install: `./install.sh --step desktop [--desktop i3|bspwm|awesome|xfce|none]`
+- Re-run one step on the existing install: `./install.sh --step desktop [--desktop i3|bspwm|awesome|xfce|none]` or `./install.sh --step apps`
+- Test the apps step without menus: `APPS_PRESET="alacritty firefox" ./install.sh --step apps --yes`. The preset only applies with `--yes`.
 - Try the configured desktop without logging out: `Xephyr :5 -screen 1600x900 & DISPLAY=:5 junest-session --nested` (`--nested` skips the systemd user units). The log is in `/tmp/$USER/desktop.log`.
 - Lint: `shellcheck -x install.sh lib/*.sh bin/* guest/* share/xsessionrc desktops/*.conf`. shellcheck isn't on the host; get the static release binary into `/tmp/$USER/tools`.
 - Use the environment: `junest` (shell), `junest -- <cmd>`, `junest -f -- pacman ...` (fakeroot)
@@ -26,7 +27,7 @@ Done so far: the base install and step 1 (the desktop choice: i3, bspwm, awesome
 
 ## Architecture
 
-- `install.sh` sources `lib/*.sh` (`common`, then `cleanup`, `junest`, `guest`, `desktop`) and runs the steps in order. The `lib` files only define functions and constants.
+- `install.sh` sources `lib/*.sh` (`common`, then `cleanup`, `junest`, `guest`, `desktop`, `apps`) and runs the steps in order. The `lib` files only define functions and constants.
 - `bin/` holds scripts that get **installed** to `~/.local/bin`, not run from the repo:
   - `junest`: the wrapper users actually call. It sources `~/.config/42-junest/config` (`JUNEST_HOME`, plus the `BINDS` array of host paths bound at the same place), then calls the pinned JuNest clone in `~/.local/share/junest`.
   - `junest-nvidia`: prepares the NVIDIA libraries (see below).
@@ -36,6 +37,19 @@ Done so far: the base install and step 1 (the desktop choice: i3, bspwm, awesome
   - `ft_lock`: asks the host to lock
   - `x-terminal-emulator`: `$TERMINAL` or xterm, used by the stock keybindings
 - `desktops/<id>.conf` is the desktop catalog: `NAME`, `DESC`, `PACKAGES=()`, `START`, and `stock_config <rootfs>`. Adding a file adds a menu entry. `stock_config` copies the guest's default config into `~/.config` **only if missing**, plus the 42 patches (a Ctrl+Alt+L → `ft_lock` shortcut, guest lockers disabled). Switching desktops `pacman -Rns` the old desktop's packages; config folders are never deleted.
+- `apps/NN-<category>.list` is the app catalog. Its header has `# name:` and `# role:`, then one app per line: `id | packages | description`. Ids are unique across files; menus follow the `NN` order.
+  - Only official repos (no AUR).
+  - Host apps are deliberately not offered; that was the user's choice. They can't run inside the guest anyway: `/usr` is replaced and the libraries don't match.
+  - Installed apps are listed in `APPS` in the config.
+  - Removing apps marks their packages `--asdeps`, then removes only those that `pacman -Qdttq` lists (`-tt`, because zathura and its plugin depend on each other only optionally). Chosen packages are re-marked `--asexplicit`.
+- **Default apps.** A role (`terminal browser editor files video image pdf`) maps to MIME types in `ROLE_MIMES` (`lib/apps.sh`).
+  - Defaults go to `~/.config/<desktop name, lowercase>-mimeapps.list`, never to `mimeapps.list`. The home is shared with GNOME, and this per-desktop file only applies when `XDG_CURRENT_DESKTOP` is ours.
+  - `write_defaults` deletes only the files that carry its own header. It runs again after a desktop switch.
+  - The terminal and browser binaries are stored as `APP_TERMINAL`/`APP_BROWSER`; `junest-session` exports them as `TERMINAL`/`BROWSER`.
+- **All questions use whiptail** (`ask_menu`, `ask_checklist`, `ask_radiolist`, `ask_yesno`, `ask_input` in `lib/common.sh`). There's no plain-text fallback.
+  - whiptail draws on stderr, because stdout is captured by `$(...)`. `require_whiptail` therefore checks stdin and stderr, not stdout.
+  - `--yes` never prompts. It keeps the items given as ON, or the current choice.
+- `config_set` passes values to awk through `ENVIRON`: `awk -v` would eat the backslashes of the `%q` quoting and break sourcing the config.
 - Host-side edits of guest files (`pacman.conf`, `makepkg.conf`) are done with sed directly on `$JUNEST_HOME/etc/...`. Package operations go through the wrapper (`guest` / `guest_root` in `lib/guest.sh`).
 - Later steps (rice, passthrough folders, apps) are meant to plug in the same way: new `lib/*.sh` files, with persistent choices kept in the config file. `write_config` keeps `BINDS` across reinstalls.
 

@@ -1,0 +1,8 @@
+# name: Office and graphics
+# role:
+# id | packages | description
+libreoffice | libreoffice-fresh | office suite
+gimp        | gimp              | image editor
+inkscape    | inkscape          | vector graphics editor
+obsidian    | obsidian          | Markdown notes
+keepassxc   | keepassxc         | password manager

@@ -1,0 +1,6 @@
+# name: PDF viewer
+# role: pdf
+# id | packages | description
+zathura | zathura zathura-pdf-mupdf | keyboard-driven, minimal
+evince  | evince                    | GNOME document viewer
+okular  | okular                    | KDE document viewer, annotations

@@ -1,0 +1,6 @@
+# name: Communication
+# role:
+# id | packages | description
+discord  | discord          | Discord
+telegram | telegram-desktop | Telegram
+signal   | signal-desktop   | Signal

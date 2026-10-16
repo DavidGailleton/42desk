@@ -1,0 +1,4 @@
+# name: App launcher
+# role:
+# id | packages | description
+rofi | rofi | launcher and window switcher (dmenu is always installed)

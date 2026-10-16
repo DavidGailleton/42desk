@@ -1,0 +1,13 @@
+# name: Command-line tools
+# role:
+# id | packages | description
+btop      | btop      | resource monitor
+htop      | htop      | process viewer
+fastfetch | fastfetch | system info
+zsh       | zsh       | Z shell
+fish      | fish      | friendly interactive shell
+gdb       | gdb       | GNU debugger
+valgrind  | valgrind  | memory checker
+clang     | clang     | C/C++ compiler and tools
+python    | python    | Python 3
+nodejs    | nodejs npm | Node.js and npm

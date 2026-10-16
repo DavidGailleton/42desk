@@ -1,0 +1,6 @@
+# name: File manager
+# role: files
+# id | packages | description
+thunar   | thunar   | XFCE file manager, light
+pcmanfm  | pcmanfm  | very light file manager
+nautilus | nautilus | GNOME Files

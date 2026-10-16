@@ -1,0 +1,9 @@
+# name: Editor / IDE
+# role: editor
+# id | packages | description
+neovim   | neovim   | modal editor (nvim)
+vim      | vim      | the classic modal editor
+emacs    | emacs    | GNU Emacs
+code     | code     | Code - OSS (open-source VS Code build)
+mousepad | mousepad | simple GTK text editor
+gedit    | gedit    | GNOME text editor

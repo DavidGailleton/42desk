@@ -1,0 +1,6 @@
+# name: Web browser
+# role: browser
+# id | packages | description
+firefox  | firefox  | Mozilla Firefox
+chromium | chromium | open-source base of Chrome
+vivaldi  | vivaldi  | Chromium-based, very customizable

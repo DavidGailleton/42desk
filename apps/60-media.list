@@ -1,0 +1,5 @@
+# name: Media player
+# role: video
+# id | packages | description
+mpv | mpv | minimal video/audio player
+vlc | vlc | plays everything, full UI
