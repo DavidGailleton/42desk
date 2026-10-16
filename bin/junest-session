@@ -16,7 +16,7 @@ DESKTOP="" DESKTOP_START="" DESKTOP_NAME="" APP_TERMINAL="" APP_BROWSER=""
 [[ -n $DESKTOP_START ]] || { echo "junest-session: no desktop configured" >&2; exit 1; }
 [[ -n ${DISPLAY:-} ]] || { echo "junest-session: DISPLAY is not set" >&2; exit 1; }
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
-# Host binaries first: the GDM session PATH may lack ~/.local/bin.
+# Host binaries first: the login session PATH may lack ~/.local/bin.
 export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
 if [[ -e $TMP_ROOT && ! -O $TMP_ROOT ]]; then
@@ -27,7 +27,7 @@ install -d -m 700 "$TMP_ROOT"
 exec >>"$TMP_ROOT/desktop.log" 2>&1
 echo "=== $(date '+%F %T') starting $DESKTOP on $DISPLAY"
 
-# GDM already describes a GNOME session (XDG_CURRENT_DESKTOP=ubuntu:GNOME, ...)
+# The display manager already describes a GNOME session (XDG_CURRENT_DESKTOP=ubuntu:GNOME, ...)
 # before ~/.xsessionrc runs: describe ours, and drop GNOME/Ubuntu-only values.
 unset SESSION_MANAGER GNOME_DESKTOP_SESSION_ID GNOME_SHELL_SESSION_MODE GDMSESSION \
     XDG_MENU_PREFIX GTK_MODULES QT_IM_MODULE XDG_DATA_DIRS XDG_CONFIG_DIRS
@@ -101,11 +101,12 @@ mkfifo -m 600 "$fifo"
     done
 ) &
 bridge_pid=$!
-trap 'kill "$bridge_pid" 2>/dev/null; rm -f "$fifo"' EXIT
+trap 'kill "$bridge_pid" 2>/dev/null; rm -f "$fifo" "$bridge_dir/session.env"' EXIT
 
 # A private session bus, so the desktop's services (xfconfd, ...) start in JuNest.
+# 42desk-start applies the rice and records the session for live rice changes.
 # shellcheck disable=SC2086  # DESKTOP_START may hold arguments
-junest -- dbus-run-session -- $DESKTOP_START
+junest -- dbus-run-session -- 42desk-start $DESKTOP_START
 rc=$?
 echo "=== $(date '+%F %T') $DESKTOP exited with status $rc"
 exit "$rc"

@@ -1,0 +1,36 @@
+# {{MARK}}
+[font]
+normal = { family = "{{FONT}}" }
+size = {{FONT_SIZE}}
+
+[window]
+padding = { x = 10, y = 10 }
+dynamic_padding = true
+
+[colors.primary]
+background = "{{BG}}"
+foreground = "{{FG}}"
+
+[colors.cursor]
+cursor = "{{ACCENT}}"
+text = "{{BG}}"
+
+[colors.normal]
+black = "{{C0}}"
+red = "{{C1}}"
+green = "{{C2}}"
+yellow = "{{C3}}"
+blue = "{{C4}}"
+magenta = "{{C5}}"
+cyan = "{{C6}}"
+white = "{{C7}}"
+
+[colors.bright]
+black = "{{C8}}"
+red = "{{C9}}"
+green = "{{C10}}"
+yellow = "{{C11}}"
+blue = "{{C12}}"
+magenta = "{{C13}}"
+cyan = "{{C14}}"
+white = "{{C15}}"

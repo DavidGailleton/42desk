@@ -13,7 +13,7 @@ An interactive Bash script (whiptail menus) that sets up a customized [JuNest](h
 5. When both a desktop environment and an app in a category are selected, which app is the default for that category.
 6. Which 42-specific apps should be available inside JuNest.
 
-Done so far: the `42desk` command and control center, the base install, step 1 (the desktop choice: i3, bspwm, awesome or XFCE, all native X11) and steps 3–6: host folders, apps by category, the default app per role, and the 42 apps (norminette, 42 header). Step 2 (rice) is left; `42_bspwm_dotfile/` (an untracked separate repo) is its likely source. Don't carry over its `LD_PRELOAD` trick against `ft_lock`'s timers. Hyprland and other Wayland compositors can't work here: GDM's Xorg owns the GPU, and Hyprland has no X11 backend.
+Done so far: the `42desk` command and control center, the base install, and all six steps: the desktop (i3, bspwm, awesome or XFCE, all native X11), the rice (our own themes), host folders, apps by category, the default app per role, and the 42 apps (norminette, 42 header). `42_bspwm_dotfile/` (a separate repo, excluded in `.git/info/exclude`) is not used: its rices need the AUR and chaotic-aur, and its `LD_PRELOAD` trick against `ft_lock`'s timers must never be carried over. Hyprland and other Wayland compositors can't work here: the display manager's Xorg owns the GPU, and Hyprland has no X11 backend.
 
 ## Commands
 
@@ -21,8 +21,11 @@ Done so far: the `42desk` command and control center, the base install, step 1 (
 - Install (fresh: wipes any previous setup after a confirmation): `./install.sh [--rootfs PATH] [--desktop ID|none] [--yes]`, the same as `bin/42desk install …`.
 - Re-run one step on the existing install: `42desk configure desktop [--desktop i3|bspwm|awesome|xfce|none]`; also `configure folders`, `configure apps`, `configure 42apps`. `./install.sh --step X` is an alias. The full install runs folders → desktop → apps → 42apps.
 - Test the apps step without menus: `APPS_PRESET="alacritty firefox" ./install.sh --step apps --yes`. The preset only applies with `--yes`; the same goes for `FOLDERS_PRESET` and `FT_PRESET`.
-- Try the configured desktop without logging out: `Xephyr :5 -screen 1600x900 & DISPLAY=:5 junest-session --nested` (`--nested` skips the systemd user units). The log is in `/tmp/$USER/desktop.log`.
-- Lint: `shellcheck -x install.sh lib/*.sh bin/* guest/* share/xsessionrc desktops/*.conf`. shellcheck isn't on the host; get the static release binary into `/tmp/$USER/tools`.
+- Change the look: `42desk rice ID|stock` (also from a terminal inside the desktop, or Super+Shift+T there); `42desk rice --list`; `42desk configure rice` for the menu; `--rice ID|stock` for `install`/`configure`.
+- Try the configured desktop without logging out: `Xephyr :5 -screen 1600x900 -noreset & DISPLAY=:5 junest-session --nested` (`--nested` skips the systemd user units). The log is in `/tmp/$USER/desktop.log`. Keep `-noreset`: without it Xephyr resets when its last client disconnects (right after `xrdb` and `setxkbmap` at startup), which wipes the X resources and the keymap. The real Xorg never does that, because LightDM keeps a connection open.
+- Regenerate the rice wallpapers after changing a palette: `python3 tools/gen-wallpapers.py [id...]` (Pillow).
+- Check every rice × desktop renders: source the libs with a throwaway `HOME` and call `rice_render <rootfs> <id> <desktop>` for each pair; no `{{TOKEN}}` may be left, and the rendered `bspwmrc`/`launch.sh` must pass `shellcheck -s sh`. awesome needs `etc/xdg/awesome/rc.lua` in the given rootfs.
+- Lint: `shellcheck -x install.sh lib/*.sh bin/* guest/* share/xsessionrc desktops/*.conf rices/*/rice.conf`. Templates aren't shell until rendered (see above). shellcheck isn't on the host; get the static release binary into `/tmp/$USER/tools`.
 - Use the environment: `junest` (shell), `junest -- <cmd>`, `junest -f -- pacman ...` (fakeroot)
 - NVIDIA helper: `junest-nvidia status|path|fetch|keep`
 
@@ -63,7 +66,15 @@ Done so far: the `42desk` command and control center, the base install, step 1 (
   - `--yes` never prompts. It keeps the items given as ON, or the current choice.
 - `config_set` passes values to awk through `ENVIRON`: `awk -v` would eat the backslashes of the `%q` quoting and break sourcing the config.
 - Host-side edits of guest files (`pacman.conf`, `makepkg.conf`) are done with sed directly on `$JUNEST_HOME/etc/...`. Package operations go through the wrapper (`guest` / `guest_root` in `lib/guest.sh`).
-- Later steps (rice, passthrough folders, apps) are meant to plug in the same way: new `lib/*.sh` files, with persistent choices kept in the config file. `write_config` keeps `BINDS` across reinstalls.
+- **Rices** (`lib/rice.sh`): our own looks, official packages only. `rices/<id>/rice.conf` holds `NAME DESC DESKTOPS=() PACKAGES=()` (its font), a palette (`BG BG_ALT FG FG_DIM ACCENT ACCENT2 URGENT`, `COLORS=()` for terminal colors 0–15), `FONT FONT_SIZE FONT_SIZE_SMALL GTK_THEME ICONS GAP BORDER RADIUS BAR_POSITION`, and a generated `wallpaper.jpg`. Adding a folder adds a rice.
+  - `rices/_templates/files` lists which template goes where, for which desktops, and whether it needs an app (terminal configs only for installed terminals). Templates use `{{KEY}}` tokens (`rice_vars`); a leftover token or a missing `{{MARK}}` line in the first 3 lines is an error. awesome's `rc.lua` is patched from the installed one instead (`_render_awesome_rc`).
+  - Shared by every rice (`RICE_PACKAGES`): picom, polybar (i3, bspwm), rofi, dunst, feh, xsettingsd, xrdb, libnotify, Materia, Papirus, the nerd symbols font. Fonts of every rice stay installed while any rice is used (switching works offline); going back to stock removes all of them with `remove_orphans`.
+  - **Ownership:** rendered files carry `RICE_MARK`. A user's file at the same path is moved to `~/.config/42-junest/rice-backup/` first (a second one gets a dated name, never overwritten) and comes back with the stock look. `$RICE_STATE/files` lists what's placed (files no longer rendered are un-placed on each render); `$RICE_STATE/dirs` lists the folders the rice created, deleted with stock only if empty.
+  - GTK settings go through xsettingsd and X resources through `xrdb -merge` of `~/.config/42-junest/rice/Xresources`, never `~/.Xresources` or `gtk-3.0/settings.ini`: GNOME shares the home. XFCE instead gets xfconf properties at session start; `rice-xfce-reset` (set whenever a rice is rendered for XFCE) makes the next stock XFCE session reset them.
+  - The rice step runs after desktop; `setup_desktop` and `setup_apps` call `rice_refresh` (other WM files, new terminals, or drop the rice when the desktop has none).
+- `remove_orphans` (`lib/guest.sh`) and `kept_packages` (`lib/apps.sh`) are the only way packages get removed by the apps and rice steps: candidates minus everything something configured still needs, marked `--asdeps`, then only pacman's `-Qdttq` orphans go.
+- `guest`/`guest_root` run directly (with the guest's fakeroot `sudo`) when `JUNEST_ENV` is set, so `42desk` works from a terminal inside the desktop; `install` still refuses to run there.
+- New steps plug in the same way: a new `lib/*.sh` file (sourced in `bin/42desk`), an entry in `STEPS` and `run_step` (`lib/cli.sh`), and persistent choices in the config file. `write_config` keeps `BINDS` across reinstalls.
 
 ## Invariants
 
@@ -80,15 +91,16 @@ Done so far: the `42desk` command and control center, the base install, step 1 (
   - The wrapper ro-binds that dir and exports `LD_LIBRARY_PATH`, `VK_ADD_DRIVER_FILES`, `__EGL_VENDOR_LIBRARY_DIRS`, `GBM_BACKENDS_PATH` and `WLR_RENDERER=vulkan`.
   - The machines are hybrid Intel + NVIDIA: Mesa is the default, and `prime-run` offloads to NVIDIA.
 - **No AUR helper.** The yay-git shipped in the JuNest image links to a fixed `libalpm` soname and breaks after the first pacman upgrade, so `remove_yay` uninstalls it before the base packages go in. If an app needs the AUR, build it with `git clone` + `makepkg` (build dirs are already in `/tmp/$USER/makepkg`), then `pacman -U`.
-- **Session flow.** `~/.xsessionrc` holds a marked block (`# >>> 42-junest >>>`) that sources `~/.local/share/42-junest/xsessionrc` (from `share/xsessionrc`, POSIX sh). GDM sources it before gnome-session starts.
+- **Session flow.** `~/.xsessionrc` holds a marked block (`# >>> 42-junest >>>`) that sources `~/.local/share/42-junest/xsessionrc` (from `share/xsessionrc`, POSIX sh). The display manager (LightDM on the 42 computers) sources it from `/etc/X11/Xsession.d` before gnome-session starts.
   - It runs `junest-session`. A status of 0 after at least 10 s calls `exit`, which logs out. Anything else returns, so GNOME starts as the fallback.
   - Escape hatch: `touch ~/.config/42-junest/desktop-disabled`.
   - `junest-session` does the following, in order:
     1. Fetches the NVIDIA libs if they're missing, with a zenity window.
-    2. Cleans the GNOME variables GDM has already set (`XDG_CURRENT_DESKTOP`, `SESSION_MANAGER`, `XDG_DATA_DIRS`, ...).
+    2. Cleans the GNOME variables already set for the session (`XDG_CURRENT_DESKTOP`, `SESSION_MANAGER`, `XDG_DATA_DIRS`, ...).
     3. Starts the units in `/etc/systemd/user/graphical-session.target.wants` (the 42 `nats-user-agent`). Only gnome-session would start them otherwise.
     4. Applies the GNOME keyboard layouts with `setxkbmap`.
-    5. Runs `junest -- dbus-run-session -- $DESKTOP_START`.
+    5. Runs `junest -- dbus-run-session -- 42desk-start $DESKTOP_START`. `42desk-start` (guest) writes `$XDG_RUNTIME_DIR/42-junest/session.env` (DISPLAY and the session bus, removed by `junest-session` at exit), runs `42desk-rice-apply start` (X resources, wallpaper, dunst, xsettingsd, picom with glx or xrender, or the XFCE properties), runs the desktop, then `42desk-rice-apply stop-daemons` (also polybar and sxhkd, which would keep their key grabs).
+  - Live rice changes: `rice_reload` runs `42desk-rice-apply reload` directly inside the session, or through `junest` with `session.env` from the host; it restarts the WM in place (`i3-msg restart`, `bspc wm -r`, SIGHUP for awesome).
 - **Locking goes through the host.** 42's `ft_lock` is a host binary, and lockers running in the guest can't check the 42 password, so never install i3lock or similar.
   - `junest-session` runs a FIFO bridge at `$XDG_RUNTIME_DIR/42-junest/host.fifo`. The guest `ft_lock` writes `lock`; the host debounces it and runs `/usr/local/bin/ft_lock`.
   - Don't skip based on `pgrep ft_lock`: ft_lock leaves a `[ft_ld]` daemon with that name running.

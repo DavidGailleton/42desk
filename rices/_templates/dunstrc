@@ -1,0 +1,33 @@
+# {{MARK}}
+[global]
+    font = {{FONT}} {{FONT_SIZE_SMALL}}
+    origin = top-right
+    offset = (16, 48)
+    width = 340
+    gap_size = 6
+    padding = 10
+    horizontal_padding = 12
+    frame_width = {{BORDER}}
+    frame_color = "{{ACCENT}}"
+    corner_radius = {{RADIUS}}
+    separator_color = frame
+    icon_theme = {{ICONS}}
+    enable_recursive_icon_lookup = true
+    max_icon_size = 48
+    format = "<b>%s</b>\n%b"
+
+[urgency_low]
+    background = "{{BG}}"
+    foreground = "{{FG_DIM}}"
+    timeout = 4
+
+[urgency_normal]
+    background = "{{BG}}"
+    foreground = "{{FG}}"
+    timeout = 6
+
+[urgency_critical]
+    background = "{{BG}}"
+    foreground = "{{FG}}"
+    frame_color = "{{URGENT}}"
+    timeout = 0

@@ -11,8 +11,34 @@ BASE_PACKAGES=(
     mesa-utils vulkan-tools
 )
 
-guest()      { "$BIN_DIR/junest" -- "$@"; }
-guest_root() { "$BIN_DIR/junest" -f -- "$@"; }
+# Inside the JuNest session already (a terminal of the desktop, the rofi rice
+# picker), commands run directly; the guest's sudo is JuNest's fakeroot one.
+guest() {
+    if [[ -n ${JUNEST_ENV:-} ]]; then "$@"; else "$BIN_DIR/junest" -- "$@"; fi
+}
+guest_root() {
+    if [[ -n ${JUNEST_ENV:-} ]]; then sudo "$@"; else "$BIN_DIR/junest" -f -- "$@"; fi
+}
+
+# remove_orphans "<kept packages>" <pkg>...: removes those of <pkg> that are
+# installed, not kept, and needed by nothing else. They are marked as deps,
+# then only pacman's orphans go (-tt: also those only optionally required,
+# e.g. zathura <-> its plugin).
+remove_orphans() {
+    local keep=" $1 " p
+    local -a cand=() remove=()
+    shift
+    for p in "$@"; do
+        [[ $keep == *" $p "* || " ${cand[*]} " == *" $p "* ]] && continue
+        guest pacman -Qq "$p" >/dev/null 2>&1 && cand+=("$p")
+    done
+    ((${#cand[@]})) || return 0
+    guest_root pacman -D --asdeps "${cand[@]}" >/dev/null
+    mapfile -t remove < <(guest pacman -Qdttq 2>/dev/null | grep -Fxf <(printf '%s\n' "${cand[@]}"))
+    ((${#remove[@]})) || return 0
+    log "removing: ${remove[*]}"
+    guest_root pacman -Rns --noconfirm "${remove[@]}"
+}
 
 configure_pacman() {
     local rootfs=$1 conf=$1/etc/pacman.conf

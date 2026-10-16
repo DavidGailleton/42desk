@@ -1,0 +1,19 @@
+#!/bin/bash
+# 42desk-rice-pick: rofi menu of the rices for this desktop (Super+Shift+T,
+# polybar's brush icon); the chosen one is applied live by 42desk.
+desk=$HOME/.local/bin/42desk
+[[ -x $desk ]] || { notify-send "42desk" "42desk is not installed in ~/.local/bin"; exit 1; }
+# shellcheck source=/dev/null
+current=$(. "$HOME/.config/42-junest/config" 2>/dev/null; echo "${RICE:-stock}")
+list=$("$desk" rice --list) || exit 1
+choice=$(awk -F'\t' -v c="$current" '{ print $2 ($1 == c ? "  (current)" : "") }' <<<"$list" |
+    rofi -dmenu -i -p "rice") || exit 0
+choice=${choice%  (current)}
+id=$(awk -F'\t' -v n="$choice" '$2 == n { print $1 }' <<<"$list")
+[[ -n $id && $id != "$current" ]] || exit 0
+notify-send "42desk" "Switching to $choice..."
+if "$desk" rice "$id" >>"/tmp/$USER/desktop.log" 2>&1; then
+    notify-send "42desk" "Rice: $choice"
+else
+    notify-send -u critical "42desk" "Could not switch to $choice: see /tmp/$USER/desktop.log"
+fi

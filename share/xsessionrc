@@ -1,6 +1,6 @@
-# Sourced from ~/.xsessionrc by the GDM X session, before GNOME starts.
+# Sourced from ~/.xsessionrc by the X session (Xsession.d), before GNOME starts.
 # Runs the JuNest desktop: a normal quit logs out, a failure falls back to GNOME.
-# POSIX sh: GDM sources this with /bin/sh. Disable with:
+# POSIX sh: Xsession sources this with /bin/sh. Disable with:
 #   touch ~/.config/42-junest/desktop-disabled
 # shellcheck shell=sh
 

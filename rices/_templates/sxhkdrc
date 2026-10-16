@@ -1,0 +1,59 @@
+# {{MARK}}
+# bspwm keys for the {{NAME}} rice. Super+Shift+T changes the rice,
+# Ctrl+Alt+L locks through the host (ft_lock).
+
+# Apps
+super + Return
+	x-terminal-emulator
+super + d
+	rofi -show drun
+super + shift + d
+	rofi -show run
+super + Tab
+	rofi -show window
+super + shift + t
+	42desk-rice-pick
+ctrl + alt + l
+	ft_lock
+
+# Volume
+XF86Audio{Raise,Lower}Volume
+	pactl set-sink-volume @DEFAULT_SINK@ {+,-}5%
+XF86AudioMute
+	pactl set-sink-mute @DEFAULT_SINK@ toggle
+
+# Session: reload keys, restart bspwm in place, log out
+super + Escape
+	pkill -USR1 -x sxhkd
+super + shift + r
+	bspc wm -r
+super + shift + e
+	bspc quit
+
+# Windows: close, kill, layout, state
+super + {_,shift + }q
+	bspc node -{c,k}
+super + m
+	bspc desktop -l next
+super + {t,shift + space,f}
+	bspc node -t {tiled,floating,fullscreen}
+
+# Focus or move (with shift) in a direction
+super + {_,shift + }{h,j,k,l}
+	bspc node -{f,s} {west,south,north,east}
+super + {_,shift + }{Left,Down,Up,Right}
+	bspc node -{f,s} {west,south,north,east}
+
+# Desktops: focus or send (with shift)
+super + {_,shift + }{1-9,0}
+	bspc {desktop -f,node -d} '^{1-9,10}'
+
+# Preselect a direction, cancel
+super + ctrl + {h,j,k,l}
+	bspc node -p {west,south,north,east}
+super + ctrl + space
+	bspc node -p cancel
+
+# Resize
+super + alt + {h,j,k,l}
+	bspc node -z {left -20 0,bottom 0 20,top 0 -20,right 20 0}

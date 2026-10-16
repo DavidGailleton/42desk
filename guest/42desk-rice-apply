@@ -1,0 +1,102 @@
+#!/bin/bash
+# 42desk-rice-apply start|reload|stop-daemons: applies the rice's look to the
+# running desktop, inside JuNest. The files themselves are written by 42desk
+# (lib/rice.sh); this starts the daemons that read them and reloads the WM.
+#   start          before the WM: X resources, wallpaper, daemons, XFCE settings
+#   reload         after a rice change (or back to stock): the same, then the WM restarts
+#   stop-daemons   after the WM exited
+set -u
+mode=${1:-reload}
+cfg=$HOME/.config/42-junest
+log=/tmp/$USER/desktop.log
+# shellcheck source=/dev/null
+DESKTOP=$(. "$cfg/config" 2>/dev/null; echo "${DESKTOP:-}")
+RICE_RICE=""
+# shellcheck source=/dev/null
+[[ -r $cfg/rice/rice.env ]] && . "$cfg/rice/rice.env"
+
+[[ $mode == reload ]] && exec >>"$log" 2>&1
+echo "42desk-rice-apply $mode (rice: ${RICE_RICE:-stock})"
+
+# $1: also what the WM's own config starts (polybar, bspwm's sxhkd), which
+# would otherwise outlive it and keep its key grabs.
+stop_daemons() {
+    local p
+    for p in picom dunst xsettingsd ${1:+polybar sxhkd}; do pkill -u "$USER" -x "$p"; done
+}
+
+# glx, or xrender when glx can't start (no GL in this session).
+start_picom() {
+    local pid
+    picom --backend glx >>"$log" 2>&1 &
+    pid=$!
+    sleep 1
+    kill -0 "$pid" 2>/dev/null && return 0
+    echo "picom: glx failed, using xrender"
+    picom --backend xrender >>"$log" 2>&1 &
+}
+
+# XFCE has its own settings daemon and compositor: set its properties instead.
+xfce_set() {
+    local m
+    xfconf-query -c xsettings -p /Net/ThemeName -n -t string -s "$RICE_GTK_THEME"
+    xfconf-query -c xsettings -p /Net/IconThemeName -n -t string -s "$RICE_ICONS"
+    xfconf-query -c xsettings -p /Gtk/FontName -n -t string -s "$RICE_FONT $RICE_FONT_SIZE_SMALL"
+    xfconf-query -c xsettings -p /Gtk/MonospaceFontName -n -t string -s "$RICE_FONT $RICE_FONT_SIZE"
+    [[ -d /usr/share/themes/$RICE_GTK_THEME/xfwm4 ]] &&
+        xfconf-query -c xfwm4 -p /general/theme -n -t string -s "$RICE_GTK_THEME"
+    for m in $(xrandr --listactivemonitors 2>/dev/null | awk 'NR > 1 { print $NF }'); do
+        xfconf-query -c xfce4-desktop -p "/backdrop/screen0/monitor$m/workspace0/last-image" \
+            -n -t string -s "$RICE_WALLPAPER"
+        xfconf-query -c xfce4-desktop -p "/backdrop/screen0/monitor$m/workspace0/image-style" \
+            -n -t int -s 5
+    done
+}
+
+# Back to stock: XFCE's defaults for what xfce_set changed.
+xfce_reset() {
+    local p
+    for p in /Net/ThemeName /Net/IconThemeName /Gtk/FontName /Gtk/MonospaceFontName; do
+        xfconf-query -c xsettings -p "$p" -r 2>/dev/null
+    done
+    xfconf-query -c xfwm4 -p /general/theme -r 2>/dev/null
+    for p in $(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep '/last-image$'); do
+        [[ $(xfconf-query -c xfce4-desktop -p "$p") == "$cfg/rice/wallpaper.jpg" ]] &&
+            xfconf-query -c xfce4-desktop -p "$p" -r
+    done
+    rm -f "$cfg/rice-xfce-reset"
+}
+
+apply() {
+    stop_daemons
+    if [[ -z $RICE_RICE ]]; then
+        [[ $DESKTOP == xfce && -e $cfg/rice-xfce-reset ]] && xfce_reset
+        return 0
+    fi
+    xrdb -merge "$cfg/rice/Xresources"
+    dunst >>"$log" 2>&1 &
+    if [[ $DESKTOP == xfce ]]; then
+        xfce_set
+        return 0
+    fi
+    feh --no-fehbg --bg-fill "$RICE_WALLPAPER"
+    xsettingsd >>"$log" 2>&1 &
+    start_picom
+}
+
+restart_wm() {
+    case $DESKTOP in
+        i3) i3-msg restart >/dev/null ;;
+        bspwm) bspc wm -r ;;
+        awesome) pkill -HUP -u "$USER" -x awesome ;;
+        xfce) ;;  # xfsettingsd applies the properties live
+    esac
+}
+
+case $mode in
+    start) apply ;;
+    reload) apply; restart_wm ;;
+    stop-daemons) stop_daemons all ;;
+    *) echo "usage: 42desk-rice-apply start|reload|stop-daemons" >&2; exit 1 ;;
+esac
+exit 0

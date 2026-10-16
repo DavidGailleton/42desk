@@ -26,6 +26,7 @@ pkg_installed() { compgen -G "$1/var/lib/pacman/local/$2-[0-9]*" >/dev/null; }
 
 load_catalog() {
     local f cat line id pkgs desc
+    ((${#CATS[@]})) && return 0
     for f in "$APPS_DIR"/*.list; do
         cat=$(basename "$f" .list)
         CATS+=("$cat")
@@ -183,10 +184,33 @@ write_defaults() {
     } >"$f"
 }
 
+# kept_packages [--apps <app id>...]: every package something configured needs:
+# base, desktop, rice, 42 apps, and the apps (those given after --apps, even
+# none, or else those in the config).
+# shellcheck disable=SC2206,SC2207  # package lists are space-separated words
+kept_packages() {
+    local id rice desktop
+    local -a apps=() keep=("${BASE_PACKAGES[@]}" "${DESKTOP_COMMON[@]}")
+    load_catalog
+    if [[ ${1:-} == --apps ]]; then
+        shift
+        apps=("$@")
+    else
+        read -ra apps <<<"$(config_get APPS)"
+    fi
+    for id in "${apps[@]}"; do keep+=(${APP_PKGS[$id]:-}); done
+    desktop=$(config_get DESKTOP)
+    [[ -n $desktop && -f $DESKTOP_DIR/$desktop.conf ]] && keep+=($(desktop_field "$desktop" PACKAGES))
+    rice=$(config_get RICE)
+    [[ -n $rice && -d $RICE_DIR/$rice ]] && keep+=($(rice_packages "$rice"))
+    keep+=($(ft_apps_packages))
+    echo "${keep[*]}"
+}
+
 # setup_apps <rootfs>
 setup_apps() {
-    local rootfs=$1 id p total=0 free msg out desktop
-    local -a selected=() install=() deselected=() remove=() keep=() desktop_pkgs=()
+    local rootfs=$1 id p total=0 free msg out
+    local -a selected=() install=() deselected=() remove=()
     load_catalog
     load_sizes
     out=$(choose_apps) || die "aborted"
@@ -200,19 +224,7 @@ setup_apps() {
     for id in $(config_get APPS); do
         [[ " ${selected[*]} " == *" $id "* || -z ${APP_PKGS[$id]+x} ]] && continue
         deselected+=("$id")
-    done
-    # Packages still needed by something else stay: base, desktop, other apps.
-    keep=("${BASE_PACKAGES[@]}" "${DESKTOP_COMMON[@]}" "${install[@]}")
-    mapfile -t -O "${#keep[@]}" keep < <(ft_apps_packages)
-    desktop=$(config_get DESKTOP)
-    if [[ -n $desktop && -f $DESKTOP_DIR/$desktop.conf ]]; then
-        read -ra desktop_pkgs <<<"$(desktop_field "$desktop" PACKAGES)"
-        keep+=("${desktop_pkgs[@]}")
-    fi
-    for id in "${deselected[@]}"; do
-        for p in ${APP_PKGS[$id]}; do
-            [[ " ${keep[*]} " == *" $p "* ]] || remove+=("$p")
-        done
+        for p in ${APP_PKGS[$id]}; do remove+=("$p"); done
     done
 
     free=$(free_gib "$rootfs")
@@ -222,14 +234,8 @@ setup_apps() {
     ((total / 1024 < free)) || die "not enough space: ${total} MiB needed, ${free} GiB free"
     ask_yesno "Apps" "$msg"$'\n\n'"Continue?" || die "aborted"
 
-    if ((${#remove[@]})); then
-        log "removing: ${deselected[*]}"
-        # Only what nothing else depends on: mark as deps, then remove the orphans
-        # (-tt: also those only optionally required, e.g. zathura <-> its plugin).
-        guest_root pacman -D --asdeps "${remove[@]}" >/dev/null
-        mapfile -t remove < <(guest pacman -Qdttq 2>/dev/null | grep -Fxf <(printf '%s\n' "${remove[@]}"))
-        ((${#remove[@]})) && guest_root pacman -Rns --noconfirm "${remove[@]}"
-    fi
+    # Packages still needed by something else stay: base, desktop, rice, other apps.
+    ((${#remove[@]})) && remove_orphans "$(kept_packages --apps "${selected[@]}")" "${remove[@]}"
     if ((${#install[@]})); then
         log "installing: ${selected[*]}"
         guest_root pacman -S --needed --noconfirm "${install[@]}"
@@ -243,5 +249,7 @@ setup_apps() {
         set_default_apps "$rootfs" "${selected[@]}" || die "aborted"
         write_defaults
     fi
+    # Terminal colors for newly installed terminals.
+    rice_refresh "$rootfs"
     log "apps done"
 }

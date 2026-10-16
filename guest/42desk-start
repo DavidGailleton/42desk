@@ -1,0 +1,15 @@
+#!/bin/bash
+# 42desk-start <desktop command...>: run by junest-session inside JuNest's
+# private session bus. Records the session for live rice reloads, applies the
+# rice (if any), then runs the desktop and stops the rice's daemons after it.
+state=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/42-junest
+install -d -m 700 "$state"
+# Read by `42desk rice` from the host (junest-session removes it at the end).
+printf 'DISPLAY=%s DBUS_SESSION_BUS_ADDRESS=%s\n' "$DISPLAY" "$DBUS_SESSION_BUS_ADDRESS" >"$state/session.env"
+
+42desk-rice-apply start
+
+"$@"
+rc=$?
+42desk-rice-apply stop-daemons
+exit "$rc"

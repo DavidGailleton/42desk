@@ -1,0 +1,19 @@
+# Files a rice renders, for which desktops, and only if an app is installed.
+# Tokens like {{BG}} come from rices/<id>/rice.conf (see rice_vars in lib/rice.sh).
+# awesome's rc.lua is not a template: rice_render patches the installed one.
+#
+# desktops         | app       | template          | destination under $HOME             | mode
+i3 bspwm awesome   | -         | picom.conf        | .config/picom/picom.conf            | 644
+*                  | -         | rofi.rasi         | .config/rofi/config.rasi            | 644
+*                  | -         | dunstrc           | .config/dunst/dunstrc               | 644
+i3 bspwm awesome   | -         | xsettingsd.conf   | .config/xsettingsd/xsettingsd.conf  | 644
+*                  | -         | Xresources        | .config/42-junest/rice/Xresources   | 644
+i3 bspwm           | -         | polybar.ini       | .config/polybar/config.ini          | 644
+i3 bspwm           | -         | polybar-launch.sh | .config/polybar/launch.sh           | 755
+i3                 | -         | i3.config         | .config/i3/config                   | 644
+bspwm              | -         | bspwmrc           | .config/bspwm/bspwmrc               | 755
+bspwm              | -         | sxhkdrc           | .config/sxhkd/sxhkdrc               | 644
+awesome            | -         | awesome-theme.lua | .config/awesome/theme.lua           | 644
+*                  | alacritty | alacritty.toml    | .config/alacritty/alacritty.toml    | 644
+*                  | kitty     | kitty.conf        | .config/kitty/kitty.conf            | 644
+*                  | wezterm   | wezterm.lua       | .config/wezterm/wezterm.lua         | 644

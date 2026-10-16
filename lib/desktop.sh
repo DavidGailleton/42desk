@@ -7,8 +7,10 @@ XSESSIONRC=$HOME/.xsessionrc
 HOOK_BEGIN="# >>> 42-junest >>>"
 HOOK_END="# <<< 42-junest <<<"
 
-# Shared by every desktop: fallback terminal and launcher, fonts, X tools.
-DESKTOP_COMMON=(xterm dmenu ttf-dejavu xorg-setxkbmap xorg-xrandr xorg-xsetroot xdg-utils)
+# Shared by every desktop: fallback terminal and launcher, fonts, X tools,
+# pgrep/pkill (bspwmrc, rice reloads) and whiptail (42desk in a desktop terminal).
+DESKTOP_COMMON=(xterm dmenu ttf-dejavu xorg-setxkbmap xorg-xrandr xorg-xsetroot xdg-utils
+    procps-ng libnewt)
 
 # desktop_field <id> <VAR>: prints a variable from desktops/<id>.conf.
 desktop_field() {
@@ -37,7 +39,7 @@ choose_desktop() {
     # Without a question to ask, keep what is configured (none on a first install).
     if ((ASSUME_YES)); then echo "${current:-none}"; return 0; fi
     ask_menu "Desktop environment" \
-        "Starts after the GDM login, before GNOME. Quitting it logs out; if it fails, GNOME starts instead." \
+        "Starts after the login screen, before GNOME. Quitting it logs out; if it fails, GNOME starts instead." \
         "${current:-none}" "${items[@]}"
 }
 
@@ -84,6 +86,7 @@ setup_desktop() {
         config_set DESKTOP_START ""
         config_set DESKTOP_NAME ""
         write_defaults
+        rice_refresh "$rootfs"
         return 0
     fi
 
@@ -98,8 +101,9 @@ setup_desktop() {
     config_set DESKTOP "$choice"
     config_set DESKTOP_START "$(desktop_field "$choice" START)"
     config_set DESKTOP_NAME "$(desktop_field "$choice" NAME)"
-    # Default apps (apps step) follow the desktop's name.
+    # Default apps (apps step) follow the desktop's name; the rice its files.
     write_defaults
+    rice_refresh "$rootfs"
     trim_rootfs "$rootfs"
     log "$(desktop_field "$choice" NAME) starts at the next login (Ctrl+Alt+L locks)"
 }

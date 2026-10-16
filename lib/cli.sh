@@ -3,7 +3,7 @@
 # shellcheck shell=bash
 
 CONFIG_SCHEMA=1  # current CONFIG_VERSION; not named like the key (config_get would read it)
-STEPS=(folders desktop apps 42apps)
+STEPS=(folders desktop rice apps 42apps)
 
 usage() {
     cat >&2 <<'EOF'
@@ -12,19 +12,22 @@ Usage: 42desk [COMMAND] [OPTIONS]
 Commands:
   (none)                 control center menu
   install                fresh install (wipes any previous setup after a confirmation)
-  configure STEP         change one step: folders, desktop, apps, 42apps
+  configure STEP         change one step: folders, desktop, rice, apps, 42apps
+  rice [ID|stock]        change the look (menu without ID); works inside the desktop too
+  rice --list            rices for the current desktop: id, then name
   status                 show the current setup
 
 Options:
   --rootfs PATH          install: where to create the rootfs (otherwise asked)
   --desktop ID|none      install, configure desktop: i3, bspwm, awesome, xfce or none
+  --rice ID|stock        install, configure rice: the look (see rice --list)
   -y, --yes              never ask: take the defaults or the current choices
   -h, --help             this help
 EOF
     exit "${1:-0}"
 }
 
-ROOTFS="" DESKTOP_CHOICE=""
+ROOTFS="" DESKTOP_CHOICE="" RICE_CHOICE=""
 
 # parse_options <arg>...: global options; the other words land in ARGS.
 ARGS=()
@@ -33,10 +36,12 @@ parse_options() {
         case "$1" in
             --rootfs) ROOTFS=${2:?--rootfs needs a path}; shift 2 ;;
             --desktop) DESKTOP_CHOICE=${2:?--desktop needs an id}; shift 2 ;;
+            --rice) RICE_CHOICE=${2:?--rice needs an id}; shift 2 ;;
             # Old install.sh flag.
             --step) ARGS=(configure "${2:?--step needs a name}" "${ARGS[@]}"); shift 2 ;;
             -y|--yes) ASSUME_YES=1; shift ;;
             -h|--help) usage ;;
+            --list) ARGS+=("$1"); shift ;;  # rice --list
             -*) warn "unknown option: $1"; usage 1 ;;
             *) ARGS+=("$1"); shift ;;
         esac
@@ -116,6 +121,7 @@ status_text() {
         "42desk:" "$(app_version) ($REPO_DIR)" \
         "rootfs:" "${rootfs:-none} ($size)" \
         "desktop:" "$(config_get DESKTOP_NAME | grep . || echo 'none (GNOME)')" \
+        "rice:" "$(config_get RICE | grep . || echo stock)" \
         "apps:" "$(config_get APPS | grep . || echo none)" \
         "folders:" "${binds:-none}" \
         "42 apps:" "$(config_get FT_APPS | grep . || echo none)" \
@@ -163,6 +169,7 @@ run_step() {
     case "$1" in
         folders) setup_folders "$ROOTFS" ;;
         desktop) setup_desktop "$ROOTFS" "$DESKTOP_CHOICE" ;;
+        rice)    setup_rice "$ROOTFS" ;;
         apps)    setup_apps "$ROOTFS" ;;
         42apps)  setup_42apps "$ROOTFS" ;;
         *) die "unknown step: $1 (one of: ${STEPS[*]})" ;;
@@ -185,6 +192,25 @@ cmd_configure() {
     run_step "$step"
 }
 
+# cmd_rice [ID|stock|--list]
+cmd_rice() {
+    local desktop id
+    desktop=$(config_get DESKTOP)
+    if [[ ${1:-} == --list ]]; then
+        [[ -n $desktop ]] || return 0
+        printf 'stock\tStock\n'
+        for id in $(rice_ids "$desktop"); do printf '%s\t%s\n' "$id" "$(rice_field "$id" NAME)"; done
+        return 0
+    fi
+    [[ -n $desktop ]] || die "no desktop configured: run 42desk configure desktop first"
+    if [[ -n ${1:-} ]]; then
+        # shellcheck disable=SC2034  # read by choose_rice (lib/rice.sh)
+        RICE_CHOICE=$1
+        ASSUME_YES=1
+    fi
+    cmd_configure rice
+}
+
 # Control center: one menu, each action in a subshell so that a failure or an
 # "aborted" brings the menu back instead of quitting.
 cmd_menu() {
@@ -196,6 +222,7 @@ cmd_menu() {
         if is_rootfs "$(config_get JUNEST_HOME)"; then
             items+=(
                 desktop "Change the desktop environment"
+                rice    "Change the look (rice or stock)"
                 apps    "Change the apps and default apps"
                 folders "Change the host folders visible in JuNest"
                 42apps  "Change the 42 apps (norminette, 42 header)"
@@ -235,6 +262,7 @@ main() {
         install)   require_whiptail; cmd_install ;;
         configure) cmd_configure "$@" ;;
         status)    cmd_status ;;
+        rice)      cmd_rice "$@" ;;
         help)      usage ;;
         *) warn "unknown command: $cmd"; usage 1 ;;
     esac
