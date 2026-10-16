@@ -31,7 +31,7 @@ Your own Linux desktop on a 42 school computer: no root, no sudo, nothing change
 ## Install
 
 ```sh
-git clone https://github.com/DavidGailleton/Custom_desktop_for_42.git ~/42desk
+git clone https://github.com/DavidGailleton/42desk.git ~/42desk
 cd ~/42desk
 ./install.sh
 ```
