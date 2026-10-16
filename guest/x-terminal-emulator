@@ -1,0 +1,3 @@
+#!/bin/sh
+# Default terminal for keybindings; $TERMINAL picks another one.
+exec "${TERMINAL:-xterm}" "$@"

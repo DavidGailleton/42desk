@@ -78,10 +78,19 @@ remove_yay() {
     guest_root pacman -Rns --noconfirm $pkgs
 }
 
+# The image ships UTC: use the host's timezone (clocks, logs, ...).
+configure_timezone() {
+    local zone
+    zone=$(readlink -f /etc/localtime)
+    zone=${zone#*/zoneinfo/}
+    [[ -n $zone && -e $1/usr/share/zoneinfo/$zone ]] || return 0
+    ln -sfn "/usr/share/zoneinfo/$zone" "$1/etc/localtime"
+}
+
 install_guest_helpers() {
     local rootfs=$1
     install -d "$rootfs/usr/local/bin"
-    install -m 755 "$REPO_DIR/guest/prime-run" "$REPO_DIR/guest/nvidia-smi" "$rootfs/usr/local/bin/"
+    install -m 755 "$REPO_DIR"/guest/* "$rootfs/usr/local/bin/"
 }
 
 # Nothing large should stay in the rootfs (it may live in the home quota).

@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Starts the configured JuNest desktop on the current X display. Installed to
+# ~/.local/bin by install.sh and run at login from ~/.xsessionrc; exits with
+# the desktop's status. To try it in a nested X server without touching the
+# login session's user services: Xephyr :5 & DISPLAY=:5 junest-session --nested
+set -uo pipefail
+
+NESTED=0
+[[ ${1:-} == --nested ]] && NESTED=1
+
+CONFIG="$HOME/.config/42-junest/config"
+TMP_ROOT="/tmp/$USER"
+DESKTOP="" DESKTOP_START="" DESKTOP_NAME=""
+# shellcheck source=/dev/null
+[[ -r $CONFIG ]] && . "$CONFIG"
+[[ -n $DESKTOP_START ]] || { echo "junest-session: no desktop configured" >&2; exit 1; }
+[[ -n ${DISPLAY:-} ]] || { echo "junest-session: DISPLAY is not set" >&2; exit 1; }
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+# Host binaries first: the GDM session PATH may lack ~/.local/bin.
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+if [[ -e $TMP_ROOT && ! -O $TMP_ROOT ]]; then
+    echo "junest-session: $TMP_ROOT belongs to another user" >&2
+    exit 1
+fi
+install -d -m 700 "$TMP_ROOT"
+exec >>"$TMP_ROOT/desktop.log" 2>&1
+echo "=== $(date '+%F %T') starting $DESKTOP on $DISPLAY"
+
+# GDM already describes a GNOME session (XDG_CURRENT_DESKTOP=ubuntu:GNOME, ...)
+# before ~/.xsessionrc runs: describe ours, and drop GNOME/Ubuntu-only values.
+unset SESSION_MANAGER GNOME_DESKTOP_SESSION_ID GNOME_SHELL_SESSION_MODE GDMSESSION \
+    XDG_MENU_PREFIX GTK_MODULES QT_IM_MODULE XDG_DATA_DIRS XDG_CONFIG_DIRS
+export XDG_CURRENT_DESKTOP=${DESKTOP_NAME:-$DESKTOP}
+export XDG_SESSION_DESKTOP=$DESKTOP DESKTOP_SESSION=$DESKTOP
+# The accessibility bus can't start in JuNest (dbus-broker wants the journal);
+# without this every GTK app retries it.
+export NO_AT_BRIDGE=1 GTK_A11Y=none
+
+# On a computer where the NVIDIA libs are not prepared yet, the desktop would
+# fall back to software rendering: prepare them now, with a progress window.
+if [[ -r /sys/module/nvidia/version ]] && ! junest-nvidia path >/dev/null 2>&1; then
+    echo "preparing the NVIDIA driver"
+    if command -v zenity >/dev/null; then
+        junest-nvidia fetch | zenity --progress --pulsate --no-cancel --auto-close \
+            --title "42-junest" --text "Preparing the NVIDIA driver for this computer..."
+    else
+        junest-nvidia fetch
+    fi
+fi
+
+# Units only gnome-session would start (graphical-session.target refuses a
+# manual start), e.g. the 42 nats-user-agent.
+if ((!NESTED)); then
+    systemctl --user import-environment DISPLAY XAUTHORITY 2>/dev/null
+    for unit in /etc/systemd/user/graphical-session.target.wants/*; do
+        [[ -e $unit ]] || continue
+        systemctl --user start "$(basename "$unit")" || echo "could not start $(basename "$unit")"
+    done
+fi
+
+# Keyboard layouts from GNOME settings (gnome-settings-daemon is not running).
+# [('xkb', 'fr+us'), ('xkb', 'us')] -> -layout fr,us -variant us,
+if sources=$(gsettings get org.gnome.desktop.input-sources sources 2>/dev/null); then
+    layouts="" variants=""
+    while IFS= read -r src; do
+        layouts+="${src%%+*},"
+        [[ $src == *+* ]] && variants+="${src#*+}," || variants+=","
+    done < <(grep -o "'xkb', '[^']*'" <<<"$sources" | cut -d"'" -f4)
+    if [[ -n $layouts ]]; then
+        setxkbmap -layout "${layouts%,}" -variant "${variants%,}" -option grp:win_space_toggle ||
+            echo "setxkbmap failed"
+    fi
+fi
+
+# Lock bridge: ft_lock is a host binary that can't run inside JuNest; the
+# guest's ft_lock writes "lock" here and the host runs the real one.
+bridge_dir="$XDG_RUNTIME_DIR/42-junest"
+fifo="$bridge_dir/host.fifo"
+install -d -m 700 "$bridge_dir"
+rm -f "$fifo"
+mkfifo -m 600 "$fifo"
+(
+    last=0
+    while :; do
+        while IFS= read -r req; do
+            case $req in
+                lock)
+                    # Like the GNOME extension: debounce, then always spawn (a
+                    # running ft_lock may just be its [ft_ld] daemon).
+                    (($(date +%s) - last < 2)) && continue
+                    last=$(date +%s)
+                    /usr/local/bin/ft_lock &
+                    ;;
+                *) echo "lock bridge: ignored request: $req" ;;
+            esac
+        done <"$fifo"
+    done
+) &
+bridge_pid=$!
+trap 'kill "$bridge_pid" 2>/dev/null; rm -f "$fifo"' EXIT
+
+# A private session bus, so the desktop's services (xfconfd, ...) start in JuNest.
+# shellcheck disable=SC2086  # DESKTOP_START may hold arguments
+junest -- dbus-run-session -- $DESKTOP_START
+rc=$?
+echo "=== $(date '+%F %T') $DESKTOP exited with status $rc"
+exit "$rc"

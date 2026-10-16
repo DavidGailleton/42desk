@@ -1,0 +1,20 @@
+# Sourced from ~/.xsessionrc by the GDM X session, before GNOME starts.
+# Runs the JuNest desktop: a normal quit logs out, a failure falls back to GNOME.
+# POSIX sh: GDM sources this with /bin/sh. Disable with:
+#   touch ~/.config/42-junest/desktop-disabled
+# shellcheck shell=sh
+
+_jd_cfg="$HOME/.config/42-junest/config"
+_jd_bin="$HOME/.local/bin/junest-session"
+if [ -r "$_jd_cfg" ] && [ -x "$_jd_bin" ] && [ ! -e "$HOME/.config/42-junest/desktop-disabled" ] &&
+    grep -q '^DESKTOP=[a-z]' "$_jd_cfg"; then
+    _jd_rc=0
+    _jd_start=$(date +%s)
+    "$_jd_bin" || _jd_rc=$?
+    # Quitting within a few seconds means it did not really start: use GNOME.
+    if [ "$_jd_rc" -eq 0 ] && [ $(($(date +%s) - _jd_start)) -ge 10 ]; then
+        exit 0
+    fi
+    echo "42-junest: desktop exited (status $_jd_rc), starting GNOME" >&2
+fi
+unset _jd_cfg _jd_bin _jd_rc _jd_start

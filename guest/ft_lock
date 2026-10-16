@@ -1,0 +1,9 @@
+#!/bin/sh
+# Locks the screen with the host's 42 ft_lock, through the bridge junest-session runs.
+fifo="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/42-junest/host.fifo"
+if [ ! -p "$fifo" ]; then
+    echo "ft_lock: lock bridge not running (start the desktop with junest-session)" >&2
+    exit 1
+fi
+# shellcheck disable=SC2016  # $1 expands in the inner sh
+timeout 2 sh -c 'echo lock >"$1"' _ "$fifo"

@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Fresh base install of a JuNest environment for 42 computers.
 #
-# Usage: ./install.sh [--rootfs PATH] [--yes]
-#   --rootfs PATH   where to create the rootfs (otherwise asked)
-#   -y, --yes       answer yes / take defaults for every question
+# Usage: ./install.sh [--rootfs PATH] [--desktop ID|none] [--yes]
+#        ./install.sh --step desktop [--desktop ID|none]
+#   --rootfs PATH     where to create the rootfs (otherwise asked)
+#   --desktop ID      desktop to set up (i3, bspwm, awesome, xfce or none; otherwise asked)
+#   --step desktop    only (re)run that step on the existing install
+#   -y, --yes         answer yes / take defaults for every question
 set -euo pipefail
 
 REPO_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -15,13 +18,17 @@ REPO_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$REPO_DIR/lib/junest.sh"
 # shellcheck source=lib/guest.sh
 . "$REPO_DIR/lib/guest.sh"
+# shellcheck source=lib/desktop.sh
+. "$REPO_DIR/lib/desktop.sh"
 
-usage() { sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
-ROOTFS=""
+ROOTFS="" DESKTOP_CHOICE="" STEP=""
 while (($#)); do
     case "$1" in
         --rootfs) ROOTFS=${2:?--rootfs needs a path}; shift 2 ;;
+        --desktop) DESKTOP_CHOICE=${2:?--desktop needs an id}; shift 2 ;;
+        --step) STEP=${2:?--step needs a name}; shift 2 ;;
         -y|--yes) ASSUME_YES=1; shift ;;
         -h|--help) usage ;;
         *) warn "unknown option: $1"; usage 1 ;;
@@ -73,8 +80,24 @@ summary() {
     printf '  home free:   %s GiB\n' "$(free_gib "$HOME")"
     printf '  caches:      %s\n' "$TMP_ROOT"
     printf '  NVIDIA:      %s\n' "$("$BIN_DIR/junest-nvidia" path 2>/dev/null || echo 'not used')"
+    printf '  desktop:     %s\n' "$(config_get DESKTOP | grep . || echo 'none (GNOME)')"
     printf '  start with:  junest\n'
 }
+
+# Single step on the existing install.
+if [[ -n $STEP ]]; then
+    ROOTFS=$(config_get JUNEST_HOME)
+    is_rootfs "$ROOTFS" || die "no JuNest install found, run ./install.sh first"
+    make_tmp_root
+    install_wrappers
+    install_guest_helpers "$ROOTFS"
+    configure_timezone "$ROOTFS"
+    case "$STEP" in
+        desktop) setup_desktop "$ROOTFS" "$DESKTOP_CHOICE" ;;
+        *) die "unknown step: $STEP" ;;
+    esac
+    exit 0
+fi
 
 preflight
 choose_rootfs
@@ -91,11 +114,14 @@ configure_makepkg "$ROOTFS"
 remove_yay
 install_base_packages "$ROOTFS"
 install_guest_helpers "$ROOTFS"
+configure_timezone "$ROOTFS"
 
 if [[ -r /sys/module/nvidia/version ]]; then
     log "preparing NVIDIA $(cat /sys/module/nvidia/version) userspace libraries"
     "$BIN_DIR/junest-nvidia" fetch
 fi
+
+setup_desktop "$ROOTFS" "$DESKTOP_CHOICE"
 
 trim_rootfs "$ROOTFS"
 summary

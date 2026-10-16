@@ -88,6 +88,29 @@ free_gib() {
     df -P --block-size=1G "$p" | awk 'NR==2 {print $4}'
 }
 
+# config_set <KEY> <value>: sets KEY=value (shell-quoted) in the config file,
+# replacing an existing KEY= line or appending one. Other lines are kept.
+config_set() {
+    local key=$1 line tmp
+    line="$key=$(printf '%q' "$2")"
+    mkdir -p "$CONFIG_DIR"
+    [[ -e $CONFIG_FILE ]] ||
+        echo "# Written by 42_custom_desktop/install.sh, read by ~/.local/bin/junest." >"$CONFIG_FILE"
+    tmp=$(mktemp "$CONFIG_FILE.XXXXXX")
+    awk -v key="$key" -v line="$line" '
+        index($0, key "=") == 1 { if (!done) print line; done = 1; next }
+        { print }
+        END { if (!done) print line }' "$CONFIG_FILE" >"$tmp"
+    mv "$tmp" "$CONFIG_FILE"
+}
+
+# config_get <KEY>: prints the value of KEY from the config file (empty if unset).
+config_get() {
+    [[ -r $CONFIG_FILE ]] || return 0
+    # shellcheck source=/dev/null
+    (. "$CONFIG_FILE" && printf '%s' "${!1:-}")
+}
+
 # True if <dir> looks like a JuNest/Arch rootfs, so it is safe to delete.
 is_rootfs() {
     [[ -x $1/usr/bin/pacman && -f $1/etc/pacman.conf ]]

@@ -1,20 +1,11 @@
 # Fetches JuNest, installs our wrappers and creates the rootfs.
 # shellcheck shell=bash
 
-# write_config <rootfs>: keeps BINDS from an existing config.
+# write_config <rootfs>: sets JUNEST_HOME, keeps every other key (BINDS, ...).
 write_config() {
-    local rootfs=$1 binds=""
-    # shellcheck source=/dev/null
-    [[ -r $CONFIG_FILE ]] &&
-        binds=$(BINDS=(); . "$CONFIG_FILE"; ((${#BINDS[@]})) && printf '%q ' "${BINDS[@]}")
-    binds="(${binds% })"
-    mkdir -p "$CONFIG_DIR"
-    cat >"$CONFIG_FILE" <<EOF
-# Written by 42_custom_desktop/install.sh, read by ~/.local/bin/junest.
-JUNEST_HOME=$(printf '%q' "$rootfs")
-# Host folders bound at the same path inside JuNest.
-BINDS=$binds
-EOF
+    config_set JUNEST_HOME "$1"
+    # BINDS: host folders bound at the same path inside JuNest.
+    grep -q '^BINDS=' "$CONFIG_FILE" || echo 'BINDS=()' >>"$CONFIG_FILE"
 }
 
 install_junest() {
@@ -27,7 +18,7 @@ install_junest() {
 install_wrappers() {
     log "installing wrappers to $BIN_DIR"
     mkdir -p "$BIN_DIR"
-    install -m 755 "$REPO_DIR/bin/junest" "$REPO_DIR/bin/junest-nvidia" "$BIN_DIR/"
+    install -m 755 "$REPO_DIR"/bin/* "$BIN_DIR/"
 }
 
 setup_rootfs() {
