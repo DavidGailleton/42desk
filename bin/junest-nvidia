@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# Provides NVIDIA userspace libraries matching the host kernel driver, for JuNest.
+#
+#   junest-nvidia path    print the ready driver dir for this host (exit 1 if none)
+#   junest-nvidia fetch   download + extract the matching driver if missing
+#   junest-nvidia keep    copy this host's driver into home (survives changing computer)
+#   junest-nvidia status  show host version and prepared versions
+#
+# Lookup order: ~/.local/share/junest-nvidia/<ver> (persistent), then
+# /goinfre/$USER/junest-nvidia/<ver> (per-computer, may be wiped).
+# The .run download goes to /tmp/$USER/nvidia and is deleted once extracted.
+set -euo pipefail
+
+HOME_STORE="$HOME/.local/share/junest-nvidia"
+LOCAL_STORE="/goinfre/$USER/junest-nvidia"
+[[ -d /goinfre/$USER ]] || LOCAL_STORE=$HOME_STORE
+DL_DIR="/tmp/$USER/nvidia"
+URL_BASE="https://download.nvidia.com/XFree86/Linux-x86_64"
+
+host_version() {
+    [[ -r /sys/module/nvidia/version ]] || return 1
+    cat /sys/module/nvidia/version
+}
+
+ready_dir() {
+    local ver=$1 d
+    for d in "$HOME_STORE/$ver" "$LOCAL_STORE/$ver"; do
+        [[ -f $d/.ready ]] && { echo "$d"; return 0; }
+    done
+    return 1
+}
+
+# Writes the Vulkan ICD, EGL vendor and GBM files the loaders need.
+write_configs() {
+    local d=$1 api f
+    api=$(cat "$d"/nvidia_icd.json* 2>/dev/null | grep -o '"api_version" *: *"[^"]*"' \
+        | head -1 | grep -o '[0-9][0-9.]*' || true)
+    mkdir -p "$d/icd.d" "$d/egl_vendor.d" "$d/layers.d" "$d/gbm"
+    [[ -f $d/nvidia_layers.json ]] && cp "$d/nvidia_layers.json" "$d/layers.d/"
+    for f in "$d"/libnvidia-allocator.so.*[0-9]; do
+        [[ -e $f ]] && ln -sf "../$(basename "$f")" "$d/gbm/nvidia-drm_gbm.so"
+    done
+    cat >"$d/icd.d/nvidia_icd.json" <<EOF
+{ "file_format_version": "1.0.1",
+  "ICD": { "library_path": "libGLX_nvidia.so.0", "api_version": "${api:-1.3.0}" } }
+EOF
+    cat >"$d/egl_vendor.d/10_nvidia.json" <<EOF
+{ "file_format_version": "1.0.0", "ICD": { "library_path": "libEGL_nvidia.so.0" } }
+EOF
+}
+
+# Creates the sonames (libcuda.so.1, libcuda.so, ...) the installer normally makes.
+make_links() {
+    local d=$1 f dir so
+    for f in "$d"/lib*.so.*[0-9] "$d"/32/lib*.so.*[0-9]; do
+        [[ -e $f ]] || continue
+        dir=$(dirname "$f")
+        so=$(readelf -d "$f" 2>/dev/null | sed -n 's/.*(SONAME).*\[\(.*\)\]/\1/p')
+        [[ -n $so && ! -e $dir/$so ]] && ln -s "$(basename "$f")" "$dir/$so"
+        so=${so%.so*}.so
+        [[ $so != .so && ! -e $dir/$so ]] && ln -s "$(basename "$f")" "$dir/$so"
+    done
+    return 0
+}
+
+fetch() {
+    local ver run tmp
+    ver=$(host_version) || { echo "no NVIDIA driver on this host" >&2; return 0; }
+    ready_dir "$ver" >/dev/null && return 0
+    mkdir -p "$LOCAL_STORE"
+    install -d -m 700 "/tmp/$USER" "$DL_DIR"
+    exec 9>"$LOCAL_STORE/.lock"
+    flock 9
+    ready_dir "$ver" >/dev/null && return 0
+
+    run="$DL_DIR/NVIDIA-Linux-x86_64-$ver.run"
+    if [[ ! -s $run ]]; then
+        echo "downloading NVIDIA $ver..." >&2
+        curl -fL --retry 3 -o "$run.part" "$URL_BASE/$ver/NVIDIA-Linux-x86_64-$ver.run"
+        mv "$run.part" "$run"
+    fi
+    # Extract next to the store so the final mv is atomic.
+    tmp="$LOCAL_STORE/.extract-$ver"
+    rm -rf "$tmp"
+    TMPDIR=$DL_DIR sh "$run" --extract-only --target "$tmp" >/dev/null
+    # Drop what only the real installer needs (kernel modules, docs, ...).
+    rm -rf "$tmp"/{kernel,kernel-open,firmware,html,supported-gpus,systemd,nvidia-installer} \
+        "$tmp"/{*.la,*.desktop,*.png,*.1.gz,makeself*,mkprecompiled,*.sh}
+    # Bundled libglvnd/OpenCL loaders would shadow Arch's own; keep only vendor libs.
+    (cd "$tmp" && rm -f {.,32}/lib{GL,GLX,EGL,GLESv1_CM,GLESv2,OpenGL,GLdispatch,OpenCL}.so*)
+    # Same for EGL platform libs (Arch's egl-wayland/egl-gbm/egl-x11 are newer).
+    (cd "$tmp" && rm -f {.,32}/libnvidia-egl-{wayland,wayland2,gbm,xcb,xlib}.so* \
+        ./*_nvidia_*.json ./libglxserver_nvidia.so*)
+    write_configs "$tmp"
+    make_links "$tmp"
+    touch "$tmp/.ready"
+    rm -rf "${LOCAL_STORE:?}/$ver"
+    mv "$tmp" "$LOCAL_STORE/$ver"
+    rm -f "$run"
+    echo "NVIDIA $ver ready in $LOCAL_STORE/$ver" >&2
+}
+
+case "${1:-}" in
+    path)
+        ver=$(host_version) || exit 1
+        ready_dir "$ver"
+        ;;
+    fetch)
+        fetch
+        ;;
+    keep)
+        fetch
+        ver=$(host_version) || exit 1
+        src=$(ready_dir "$ver")
+        [[ $src == "$HOME_STORE/"* ]] && { echo "already in home: $src"; exit 0; }
+        mkdir -p "$HOME_STORE"
+        cp -a "$src" "$HOME_STORE/$ver"
+        echo "kept in home: $HOME_STORE/$ver ($(du -sh "$HOME_STORE/$ver" | cut -f1))"
+        ;;
+    status)
+        echo "host driver: $(host_version || echo none)"
+        echo "in use:      $("$0" path 2>/dev/null || echo 'not ready')"
+        ls -d "$HOME_STORE"/*/ "$LOCAL_STORE"/*/ 2>/dev/null || true
+        ;;
+    *)
+        sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+        exit 1
+        ;;
+esac

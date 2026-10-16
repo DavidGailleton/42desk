@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Wrapper around JuNest, installed to ~/.local/bin/junest by install.sh.
+# Reads ~/.config/42-junest/config, keeps caches in /tmp/$USER, adds the host
+# passthrough binds and exposes the NVIDIA libraries matching the host driver.
+REAL="$HOME/.local/share/junest/bin/junest"
+CONFIG="$HOME/.config/42-junest/config"
+TMP_ROOT="/tmp/$USER"
+
+JUNEST_HOME="$HOME/.junest"
+BINDS=()
+# shellcheck source=/dev/null
+[[ -r $CONFIG ]] && . "$CONFIG"
+export JUNEST_HOME
+export JUNEST_TEMPDIR="$TMP_ROOT/junest-setup"
+
+# /tmp is wiped at reboot: recreate our private tree every time.
+if [[ -e $TMP_ROOT && ! -O $TMP_ROOT ]]; then
+    echo "junest: $TMP_ROOT belongs to another user, refusing to start" >&2
+    exit 1
+fi
+install -d -m 700 "$TMP_ROOT" "$TMP_ROOT"/{junest-setup,pacman-cache,makepkg,cache,nvidia}
+
+# Only namespace mode (the default) takes bwrap binds.
+case "${1:-}" in
+    s|setup|b|build|create-bin-wrappers|p|proot|g|groot|r|root|-h|--help|-V|--version)
+        exec "$REAL" "$@" ;;
+    n|ns) shift ;;
+esac
+
+# Guest apps cache to /tmp/$USER, not the quota-limited home.
+export XDG_CACHE_HOME="$TMP_ROOT/cache"
+
+# bwrap args, word-split by JuNest: paths must not contain spaces.
+binds=""
+for b in "${BINDS[@]}"; do
+    binds+=" --bind-try $b $b"
+done
+# Own /tmp/.X11-unix so Xwayland accepts it (host root is unmapped in the
+# sandbox), with the host's X sockets bound back in.
+binds+=" --tmpfs /tmp/.X11-unix"
+for s in /tmp/.X11-unix/X*; do
+    [[ -S $s ]] && binds+=" --bind $s $s"
+done
+
+if nv=$(junest-nvidia path 2>/dev/null); then
+    binds+=" --ro-bind $nv $nv"
+    export JUNEST_NVIDIA_DIR=$nv
+    export LD_LIBRARY_PATH="$nv:$nv/32${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export VK_ADD_DRIVER_FILES="$nv/icd.d/nvidia_icd.json"
+    export VK_ADD_IMPLICIT_LAYER_PATH="$nv/layers.d"
+    export GBM_BACKENDS_PATH="$nv/gbm"
+    export __EGL_VENDOR_LIBRARY_DIRS="$nv/egl_vendor.d:/usr/share/glvnd/egl_vendor.d"
+    # wlroots' GLES renderer can't build outputs on NVIDIA here; Vulkan can.
+    export WLR_RENDERER=${WLR_RENDERER:-vulkan}
+elif [[ -r /sys/module/nvidia/version ]]; then
+    # Driver not prepared on this computer yet: fetch in background, Mesa for now.
+    echo "junest: preparing NVIDIA driver in background (log: $TMP_ROOT/nvidia/fetch.log)" >&2
+    (setsid junest-nvidia fetch >"$TMP_ROOT/nvidia/fetch.log" 2>&1 &)
+fi
+
+# Our options come first; merge our binds into a user-given -b.
+args=()
+merged=0
+while (($#)); do
+    case "$1" in
+        -b|--backend-args) args+=("$1" "$binds ${2:-}"); shift 2; merged=1 ;;
+        --backend-command) args+=("$1" "${2:-}"); shift 2 ;;
+        -f|--fakeroot|-n|--no-copy-files) args+=("$1"); shift ;;
+        *) break ;;
+    esac
+done
+((merged)) || args+=(-b "$binds")
+
+exec "$REAL" ns "${args[@]}" "$@"
