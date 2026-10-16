@@ -102,8 +102,9 @@ choose_apps() {
     local current cat id i=0 state mib
     local -a items
     current=" $(config_get APPS) "
-    if ((ASSUME_YES)) && [[ -n ${APPS_PRESET:-} ]]; then
-        tr ' ' '\n' <<<"$APPS_PRESET" | grep .
+    # Set, even empty (a profile with no apps), the preset wins.
+    if ((ASSUME_YES)) && [[ -n ${APPS_PRESET+x} ]]; then
+        tr ' ' '\n' <<<"$APPS_PRESET" | grep . || true
         return 0
     fi
     for cat in "${CATS[@]}"; do

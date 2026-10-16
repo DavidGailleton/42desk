@@ -13,14 +13,15 @@ An interactive Bash script (whiptail menus) that sets up a customized [JuNest](h
 5. When both a desktop environment and an app in a category are selected, which app is the default for that category.
 6. Which 42-specific apps should be available inside JuNest.
 
-Done so far: the `42desk` command and control center, the base install, and all six steps: the desktop (i3, bspwm, awesome or XFCE, all native X11), the rice (our own themes), host folders, apps by category, the default app per role, and the 42 apps (norminette, 42 header). `42_bspwm_dotfile/` (a separate repo, excluded in `.git/info/exclude`) is not used: its rices need the AUR and chaotic-aur, and its `LD_PRELOAD` trick against `ft_lock`'s timers must never be carried over. Hyprland and other Wayland compositors can't work here: the display manager's Xorg owns the GPU, and Hyprland has no X11 backend.
+Done so far: the `42desk` command and control center, the base install, and all six steps: the desktop (i3, bspwm, awesome or XFCE, all native X11), the rice (our own themes), host folders, apps by category, the default app per role, and the 42 apps (norminette, 42 header), plus profiles (the whole setup in one shareable file). `42_bspwm_dotfile/` (a separate repo, excluded in `.git/info/exclude`) is not used: its rices need the AUR and chaotic-aur, and its `LD_PRELOAD` trick against `ft_lock`'s timers must never be carried over. Hyprland and other Wayland compositors can't work here: the display manager's Xorg owns the GPU, and Hyprland has no X11 backend.
 
 ## Commands
 
 - Control center (whiptail menu): `42desk`, or `bin/42desk` from the repo. `42desk status` prints the setup; `42desk --help` lists the commands.
 - Install (fresh: wipes any previous setup after a confirmation): `./install.sh [--rootfs PATH] [--desktop ID|none] [--yes]`, the same as `bin/42desk install …`.
 - Re-run one step on the existing install: `42desk configure desktop [--desktop i3|bspwm|awesome|xfce|none]`; also `configure folders`, `configure apps`, `configure 42apps`. `./install.sh --step X` is an alias. The full install runs folders → desktop → apps → 42apps.
-- Test the apps step without menus: `APPS_PRESET="alacritty firefox" ./install.sh --step apps --yes`. The preset only applies with `--yes`; the same goes for `FOLDERS_PRESET` and `FT_PRESET`.
+- Test the apps step without menus: `APPS_PRESET="alacritty firefox" ./install.sh --step apps --yes`. The preset only applies with `--yes`, even empty; the same goes for `FOLDERS_PRESET` and `FT_PRESET`. A profile with `--yes` drives every step the same way.
+- Profiles: `42desk profile export [FILE]`, `42desk profile import FILE|saved|NAME`, `42desk profile list`, `42desk install --profile FILE|NAME`. Bundled ones are in `profiles/`.
 - Change the look: `42desk rice ID|stock` (also from a terminal inside the desktop, or Super+Shift+T there); `42desk rice --list`; `42desk configure rice` for the menu; `--rice ID|stock` for `install`/`configure`.
 - Try the configured desktop without logging out: `Xephyr :5 -screen 1600x900 -noreset & DISPLAY=:5 junest-session --nested` (`--nested` skips the systemd user units). The log is in `/tmp/$USER/desktop.log`. Keep `-noreset`: without it Xephyr resets when its last client disconnects (right after `xrdb` and `setxkbmap` at startup), which wipes the X resources and the keymap. The real Xorg never does that, because LightDM keeps a connection open.
 - Regenerate the rice wallpapers after changing a palette: `python3 tools/gen-wallpapers.py [id...]` (Pillow).
@@ -31,7 +32,7 @@ Done so far: the `42desk` command and control center, the base install, and all 
 
 ## Architecture
 
-- `bin/42desk` is the program. It sources `lib/*.sh` (`common`, then `cleanup`, `junest`, `guest`, `desktop`, `apps`, `folders`, `apps42`, and `cli` last, which holds the commands and `main`). The `lib` files only define functions and constants. `install.sh` just execs `bin/42desk install`.
+- `bin/42desk` is the program. It sources `lib/*.sh` (`common`, then `cleanup`, `junest`, `guest`, `desktop`, `apps`, `folders`, `apps42`, `rice`, `profile`, and `cli` last, which holds the commands and `main`). The `lib` files only define functions and constants. `install.sh` just execs `bin/42desk install`.
   - `~/.local/bin/42desk` is a two-line launcher into the repo it was installed from (written by `install_wrappers`), because 42desk needs `lib/` and the catalogs. Public installs are planned to live in `~/.local/share/42desk` (cloned by a bootstrap script).
   - The menu runs each action in a subshell, so a `die` or "aborted" brings the menu back.
   - `CONFIG_VERSION` in the config; `migrate_config` brings older configs up to `CONFIG_SCHEMA`. Never give a script global the same name as a config key: `config_get` sources the config in a subshell that inherits the globals, so an unset key would read the global.
@@ -72,6 +73,11 @@ Done so far: the `42desk` command and control center, the base install, and all 
   - **Ownership:** rendered files carry `RICE_MARK`. A user's file at the same path is moved to `~/.config/42-junest/rice-backup/` first (a second one gets a dated name, never overwritten) and comes back with the stock look. `$RICE_STATE/files` lists what's placed (files no longer rendered are un-placed on each render); `$RICE_STATE/dirs` lists the folders the rice created, deleted with stock only if empty.
   - GTK settings go through xsettingsd and X resources through `xrdb -merge` of `~/.config/42-junest/rice/Xresources`, never `~/.Xresources` or `gtk-3.0/settings.ini`: GNOME shares the home. XFCE instead gets xfconf properties at session start; `rice-xfce-reset` (set whenever a rice is rendered for XFCE) makes the next stock XFCE session reset them.
   - The rice step runs after desktop; `setup_desktop` and `setup_apps` call `rice_refresh` (other WM files, new terminals, or drop the rice when the desktop has none).
+- **Profiles** (`lib/profile.sh`): `KEY=value` files with a `# 42desk profile` first line. They are shared between students, so they're **parsed, never sourced**: only `PROFILE_KEYS`, values limited to `[A-Za-z0-9 ._@/+:,-]`. The login is written as `@USER@` (whole path components, the 42 header login and mail prefix).
+  - A missing key keeps that step's current choice; an empty one means "none". Unknown desktop → none, unknown rice → stock, unknown app or 42 app ids are dropped with a warning.
+  - Applying one (`profile_presets`) only sets the steps' `--yes` presets (`DESKTOP_CHOICE`, `RICE_CHOICE`, `FOLDERS_PRESET`, `APPS_PRESET`, `FT_PRESET`) and writes `DEFAULT_*`/`HEADER42_*` to the config, which the steps then take as current values. Presets are checked with `${VAR+x}`, so an empty preset is honored.
+  - `run_step` auto-saves the setup to `~/.config/42-junest/profile` after every step; `install` offers it (and the bundled ones) before the rootfs question.
+  - The 42 header remembers its login and mail in `HEADER42_USER`/`HEADER42_MAIL`.
 - `remove_orphans` (`lib/guest.sh`) and `kept_packages` (`lib/apps.sh`) are the only way packages get removed by the apps and rice steps: candidates minus everything something configured still needs, marked `--asdeps`, then only pacman's `-Qdttq` orphans go.
 - `guest`/`guest_root` run directly (with the guest's fakeroot `sudo`) when `JUNEST_ENV` is set, so `42desk` works from a terminal inside the desktop; `install` still refuses to run there.
 - New steps plug in the same way: a new `lib/*.sh` file (sourced in `bin/42desk`), an entry in `STEPS` and `run_step` (`lib/cli.sh`), and persistent choices in the config file. `write_config` keeps `BINDS` across reinstalls.

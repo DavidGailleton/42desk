@@ -15,19 +15,23 @@ Commands:
   configure STEP         change one step: folders, desktop, rice, apps, 42apps
   rice [ID|stock]        change the look (menu without ID); works inside the desktop too
   rice --list            rices for the current desktop: id, then name
+  profile export [FILE]  save the setup to FILE (default: print it)
+  profile import P       apply profile P (a file, saved, or a bundled name) to the install
+  profile list           the bundled profiles
   status                 show the current setup
 
 Options:
   --rootfs PATH          install: where to create the rootfs (otherwise asked)
   --desktop ID|none      install, configure desktop: i3, bspwm, awesome, xfce or none
   --rice ID|stock        install, configure rice: the look (see rice --list)
+  --profile P            install: answer every step from profile P (see profile)
   -y, --yes              never ask: take the defaults or the current choices
   -h, --help             this help
 EOF
     exit "${1:-0}"
 }
 
-ROOTFS="" DESKTOP_CHOICE="" RICE_CHOICE=""
+ROOTFS="" DESKTOP_CHOICE="" RICE_CHOICE="" PROFILE_ARG=""
 
 # parse_options <arg>...: global options; the other words land in ARGS.
 ARGS=()
@@ -37,6 +41,7 @@ parse_options() {
             --rootfs) ROOTFS=${2:?--rootfs needs a path}; shift 2 ;;
             --desktop) DESKTOP_CHOICE=${2:?--desktop needs an id}; shift 2 ;;
             --rice) RICE_CHOICE=${2:?--rice needs an id}; shift 2 ;;
+            --profile) PROFILE_ARG=${2:?--profile needs a file or name}; shift 2 ;;
             # Old install.sh flag.
             --step) ARGS=(configure "${2:?--step needs a name}" "${ARGS[@]}"); shift 2 ;;
             -y|--yes) ASSUME_YES=1; shift ;;
@@ -133,7 +138,14 @@ status_text() {
 cmd_status() { status_text; }
 
 cmd_install() {
+    local profile=""
     preflight
+    if [[ -n $PROFILE_ARG ]]; then
+        profile=$(profile_resolve "$PROFILE_ARG")
+    elif ((!ASSUME_YES)); then
+        profile=$(choose_profile)
+    fi
+    [[ -z $profile ]] || confirm_profile "$profile"
     choose_rootfs
     cleanup_old "$ROOTFS"
     (($(free_gib "$ROOTFS") >= 4)) || die "less than 4 GiB free for $ROOTFS"
@@ -157,6 +169,7 @@ cmd_install() {
     fi
 
     local step
+    [[ -z $profile ]] || profile_presets
     for step in "${STEPS[@]}"; do run_step "$step"; done
 
     trim_rootfs "$ROOTFS"
@@ -174,6 +187,7 @@ run_step() {
         42apps)  setup_42apps "$ROOTFS" ;;
         *) die "unknown step: $1 (one of: ${STEPS[*]})" ;;
     esac
+    profile_autosave
 }
 
 # cmd_configure <step>: re-runs one step on the existing install.
@@ -182,14 +196,75 @@ cmd_configure() {
     [[ -n $step ]] || die "configure needs a step: ${STEPS[*]}"
     [[ " ${STEPS[*]} " == *" $step "* ]] || die "unknown step: $step (one of: ${STEPS[*]})"
     require_whiptail
+    prepare_existing
+    run_step "$step"
+}
+
+# prepare_existing: the existing install, refreshed with what the repo
+# installs, in case it changed since the install.
+prepare_existing() {
     existing_rootfs
     make_tmp_root
-    # Refresh what the repo installs, in case it changed since the install.
     install_wrappers
     install_guest_helpers "$ROOTFS"
     configure_timezone "$ROOTFS"
     migrate_config
-    run_step "$step"
+}
+
+# cmd_profile export [FILE] | import P | list
+cmd_profile() {
+    local action=${1:-} arg=${2:-} file name
+    case $action in
+        export)
+            [[ -r $CONFIG_FILE ]] || die "nothing to export: no setup yet"
+            if [[ -z $arg ]]; then
+                file=$(mktemp "$TMP_ROOT/profile.XXXXXX")
+                profile_write "$file" "exported setup"
+                cat "$file"
+                rm -f "$file"
+            else
+                profile_write "$arg"
+                log "profile saved to $arg (share it, or: 42desk profile import $arg)"
+            fi ;;
+        import)
+            [[ -n $arg ]] || die "profile import needs a file, saved, or one of: $(profile_names | paste -sd' ')"
+            require_whiptail
+            file=$(profile_resolve "$arg")
+            prepare_existing
+            confirm_profile "$file"
+            profile_presets
+            for name in "${STEPS[@]}"; do run_step "$name"; done
+            log "profile applied: ${PROFILE[PROFILE_NAME]:-$(basename "$file")}" ;;
+        list)
+            for name in $(profile_names); do
+                printf '%-14s %s\n' "$name" "$(sed -n 's/^PROFILE_NAME=//p' "$PROFILE_DIR/$name.profile")"
+            done ;;
+        *) die "profile needs export, import or list" ;;
+    esac
+}
+
+# Control center's profile submenu.
+profile_menu() {
+    local choice path name
+    local -a items=()
+    choice=$(ask_menu "Profiles"         "A profile holds your whole setup (desktop, rice, apps, folders, 42 apps) in one file. It is saved automatically to $SAVED_PROFILE after every change."         export         export "Save my setup to a file (to share or keep)"         import "Apply a profile to this install") || return 0
+    case $choice in
+        export)
+            path=$(ask_input "Export" "File to write:" "$HOME/42desk.profile") || return 0
+            cmd_profile export "${path/#\~/$HOME}" ;;
+        import)
+            [[ -f $SAVED_PROFILE ]] && items+=(saved "Your saved setup")
+            for name in $(profile_names); do
+                items+=("$name" "$(sed -n 's/^PROFILE_NAME=//p' "$PROFILE_DIR/$name.profile")")
+            done
+            items+=(file "A profile file...")
+            choice=$(ask_menu "Import" "Which profile?" "${items[0]}" "${items[@]}") || return 0
+            if [[ $choice == file ]]; then
+                choice=$(ask_input "Import" "Path of the profile file:" "$HOME/") || return 0
+                choice=${choice/#\~/$HOME}
+            fi
+            cmd_profile import "$choice" ;;
+    esac
 }
 
 # cmd_rice [ID|stock|--list]
@@ -226,6 +301,7 @@ cmd_menu() {
                 apps    "Change the apps and default apps"
                 folders "Change the host folders visible in JuNest"
                 42apps  "Change the 42 apps (norminette, 42 header)"
+                profile "Save or apply a profile (whole setup in one file)"
                 install "Reinstall from scratch"
             )
         else
@@ -240,6 +316,7 @@ cmd_menu() {
             quit) return 0 ;;
             status) _wt --title "Status" --msgbox "$(status_text)" 0 0 || true; continue ;;
             install) (cmd_install) || rc=$? ;;
+            profile) (profile_menu) || rc=$? ;;
             *) (cmd_configure "$choice") || rc=$? ;;
         esac
         if ((rc)); then
@@ -263,6 +340,7 @@ main() {
         configure) cmd_configure "$@" ;;
         status)    cmd_status ;;
         rice)      cmd_rice "$@" ;;
+        profile)   cmd_profile "$@" ;;
         help)      usage ;;
         *) warn "unknown command: $cmd"; usage 1 ;;
     esac

@@ -61,8 +61,13 @@ _header42_dirs() { printf '%s\n' "$HOME/.vim/plugin" "$HOME/.config/nvim/plugin"
 
 ft_install_header42() {
     local src=$TMP_ROOT/makepkg/src/42header dir user mail
-    user=$(ask_input "42 header" "Login shown in the header:" "$USER") || die "aborted"
-    mail=$(ask_input "42 header" "Mail shown in the header:" "$(_campus_mail)") || die "aborted"
+    # Defaults: what was entered last time (or a profile set), else this login.
+    user=$(config_get HEADER42_USER)
+    mail=$(config_get HEADER42_MAIL)
+    user=$(ask_input "42 header" "Login shown in the header:" "${user:-$USER}") || die "aborted"
+    mail=$(ask_input "42 header" "Mail shown in the header:" "${mail:-$(_campus_mail)}") || die "aborted"
+    config_set HEADER42_USER "$user"
+    config_set HEADER42_MAIL "$mail"
     log "installing the 42 header for vim/nvim"
     rm -rf "$src"
     git clone --quiet --depth 1 https://github.com/42Paris/42header "$src"

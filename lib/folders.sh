@@ -36,7 +36,7 @@ choose_folders() {
     local rootfs=$1 path desc state why new out
     local -a current=() known=() extra=() items=()
     if ((ASSUME_YES)) && [[ -n ${FOLDERS_PRESET+x} ]]; then
-        tr ' ' '\n' <<<"$FOLDERS_PRESET" | grep .
+        tr ' ' '\n' <<<"$FOLDERS_PRESET" | grep . || true
         return 0
     fi
     mapfile -t current < <(config_get_array BINDS)
