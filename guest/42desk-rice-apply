@@ -1,9 +1,11 @@
 #!/bin/bash
-# 42desk-rice-apply start|reload|stop-daemons: applies the rice's look to the
+# 42desk-rice-apply start|reload|picom|stop-daemons: applies the rice's look to the
 # running desktop, inside JuNest. The files themselves are written by 42desk
 # (lib/rice.sh); this starts the daemons that read them and reloads the WM.
 #   start          before the WM: X resources, wallpaper, daemons, XFCE settings
 #   reload         after a rice change (or back to stock): the same, then the WM restarts
+#   picom          after a lock: starts the rice's picom again (junest-session
+#                  stops it while ft_lock is on screen)
 #   stop-daemons   after the WM exited
 set -u
 mode=${1:-reload}
@@ -15,7 +17,7 @@ RICE_RICE=""
 # shellcheck source=/dev/null
 [[ -r $cfg/rice/rice.env ]] && . "$cfg/rice/rice.env"
 
-[[ $mode == reload ]] && exec >>"$log" 2>&1
+[[ $mode == reload || $mode == picom ]] && exec >>"$log" 2>&1
 echo "42desk-rice-apply $mode (rice: ${RICE_RICE:-stock})"
 
 # $1: also what the WM's own config starts (polybar, bspwm's sxhkd), which
@@ -96,7 +98,10 @@ restart_wm() {
 case $mode in
     start) apply ;;
     reload) apply; restart_wm ;;
+    picom)
+        [[ -n $RICE_RICE && $DESKTOP != xfce ]] && ! pgrep -u "$USER" -x picom >/dev/null && start_picom
+        ;;
     stop-daemons) stop_daemons all ;;
-    *) echo "usage: 42desk-rice-apply start|reload|stop-daemons" >&2; exit 1 ;;
+    *) echo "usage: 42desk-rice-apply start|reload|picom|stop-daemons" >&2; exit 1 ;;
 esac
 exit 0

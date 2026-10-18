@@ -62,6 +62,10 @@ wm_running() {
 # connection and never takes the screen back.
 gnome_pids() { pgrep -u "$USER" -f '^/usr/libexec/gnome-session-(binary|ctl --monitor)'; }
 
+# The unit's start timeout would kill that waiting gnome-shell every ~95 s and
+# start a new one (a new mutter on the display each time): lift it meanwhile.
+shell_dropin="$XDG_RUNTIME_DIR/systemd/user/org.gnome.Shell@x11.service.d/42desk.conf"
+
 frozen=()
 # take_over: stops GNOME's window manager, keeping the session (and its
 # services, the 42 agent, the keyboard settings) alive underneath.
@@ -71,6 +75,9 @@ take_over() {
     mapfile -t frozen < <(gnome_pids)
     ((${#frozen[@]})) || { echo "gnome-shell runs without gnome-session: not taking over"; return 1; }
     echo "freezing gnome-session (${frozen[*]}), stopping gnome-shell ($pid)"
+    mkdir -p "${shell_dropin%/*}"
+    printf '[Service]\nTimeoutStartSec=infinity\n' >"$shell_dropin"
+    systemctl --user daemon-reload
     kill -STOP "${frozen[@]}"
     kill "$pid"
     for ((i = 0; i < 50; i++)); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
@@ -95,6 +102,9 @@ give_back() {
         (eval "$gnome_env"; setsid -f gnome-shell --replace >/dev/null 2>&1)
     fi
     refresh_gsd
+    # Only now: on reload, a start still pending past 90 s would be killed.
+    rm -f "$shell_dropin"
+    systemctl --user daemon-reload
 }
 
 # refresh_gsd: once gnome-shell answers on D-Bus, restarts (through their
@@ -189,6 +199,9 @@ mkfifo -m 600 "$fifo"
                     # running ft_lock may just be its [ft_ld] daemon).
                     (($(date +%s) - last < 2)) && continue
                     last=$(date +%s)
+                    # The shortcut's keys are still down (the WM's grab): ft_lock
+                    # would fail its GrabKeyboard. The GNOME extension waits too.
+                    sleep 0.42
                     /usr/local/bin/ft_lock &
                     ;;
                 logout) : >"$logout_flag" ;;
@@ -198,9 +211,36 @@ mkfifo -m 600 "$fifo"
     done
 ) &
 bridge_pid=$!
+
+# lock_running: ft_lock's lock screen is up (not its [ft_ld] daemon), however
+# it started: our bridge, the GNOME extension's path, or 42's idle-watch.sh.
+lock_running() { pgrep -u "$USER" -f '^([^ ]*/)?ft_lock( |$)' >/dev/null; }
+# On NVIDIA, picom's GL output stays black once the screen wakes from blanking,
+# over the lock screen: no picom while locked, the rice's comes back after.
+lock_watch_pid=""
+if ((!NESTED)); then
+    (
+        paused=0
+        while sleep 1; do
+            if lock_running; then
+                if ((!paused)) && pkill -u "$USER" -x picom; then
+                    paused=1
+                    echo "locked: picom stopped"
+                fi
+            elif ((paused)); then
+                paused=0
+                echo "unlocked: starting picom again"
+                # shellcheck disable=SC2046  # KEY=value words from 42desk-start
+                [[ -r $bridge_dir/session.env ]] &&
+                    junest -- env $(cat "$bridge_dir/session.env") 42desk-rice-apply picom
+            fi
+        done
+    ) &
+    lock_watch_pid=$!
+fi
 # shellcheck disable=SC2317  # called by the trap
 finish() {
-    kill "$bridge_pid" 2>/dev/null
+    kill "$bridge_pid" ${lock_watch_pid:+"$lock_watch_pid"} 2>/dev/null
     rm -f "$fifo" "$bridge_dir/session.env"
     ((NESTED)) && return
     give_back
