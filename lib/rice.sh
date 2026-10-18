@@ -116,10 +116,16 @@ _render_awesome_rc() {
             -e 's/^\(    awful.tag(.*, s, \)awful.layout.layouts\[1\])$/\1awful.layout.suit.tile)/' "$src"
         cat <<'LUA'
 
--- 42desk: lock (through the host), launcher, rice picker
+-- 42desk: lock (through the host), back to GNOME (also Mod4+Shift+q), log out,
+-- launcher, rice picker
 root.keys(gears.table.join(root.keys(),
     awful.key({ "Control", "Mod1" }, "l", function() awful.spawn("ft_lock") end,
         { description = "lock screen", group = "42" }),
+    awful.key({ modkey }, "b", function() awesome.quit() end,
+        { description = "back to GNOME", group = "42" }),
+    awful.key({ modkey, "Control", "Shift" }, "q",
+        function() awful.spawn.easy_async("42desk-logout", function() awesome.quit() end) end,
+        { description = "log out", group = "42" }),
     awful.key({ modkey }, "d", function() awful.spawn("rofi -show drun") end,
         { description = "app launcher", group = "42" }),
     awful.key({ modkey, "Shift" }, "t", function() awful.spawn("42desk-rice-pick") end,

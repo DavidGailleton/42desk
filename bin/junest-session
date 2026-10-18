@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# Starts the configured JuNest desktop on the current X display. Installed to
-# ~/.local/bin by 42desk and run at login from ~/.xsessionrc; exits with
-# the desktop's status. To try it in a nested X server without touching the
-# login session's user services: Xephyr :5 & DISPLAY=:5 junest-session --nested
+# Starts the configured JuNest desktop in place of GNOME, inside the GNOME
+# session: freezes gnome-session, stops gnome-shell (the window manager), runs
+# the desktop, then gives GNOME back when it quits. Installed to ~/.local/bin by
+# 42desk; run at login by ~/.config/autostart/42desk.desktop (--login) and by
+# Super+B in GNOME. Exits with the desktop's status.
+# To try it in a nested X server, leaving GNOME alone:
+#   Xephyr :5 -screen 1600x900 -noreset & DISPLAY=:5 junest-session --nested
 set -uo pipefail
 
-NESTED=0
-[[ ${1:-} == --nested ]] && NESTED=1
+NESTED=0 LOGIN=0
+case ${1:-} in
+    --nested) NESTED=1 ;;
+    --login) LOGIN=1 ;;
+esac
 
 CONFIG="$HOME/.config/42-junest/config"
 TMP_ROOT="/tmp/$USER"
@@ -15,6 +21,8 @@ DESKTOP="" DESKTOP_START="" DESKTOP_NAME="" APP_TERMINAL="" APP_BROWSER=""
 [[ -r $CONFIG ]] && . "$CONFIG"
 [[ -n $DESKTOP_START ]] || { echo "junest-session: no desktop configured" >&2; exit 1; }
 [[ -n ${DISPLAY:-} ]] || { echo "junest-session: DISPLAY is not set" >&2; exit 1; }
+# Escape hatch for the login start only: Super+B still works.
+((LOGIN)) && [[ -e $HOME/.config/42-junest/desktop-disabled ]] && exit 0
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 # Host binaries first: the login session PATH may lack ~/.local/bin.
 export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
@@ -24,11 +32,107 @@ if [[ -e $TMP_ROOT && ! -O $TMP_ROOT ]]; then
     exit 1
 fi
 install -d -m 700 "$TMP_ROOT"
+bridge_dir="$XDG_RUNTIME_DIR/42-junest"
+install -d -m 700 "$bridge_dir"
+# One desktop at a time (Super+B, a second autostart).
+pidfile="$bridge_dir/session.pid"
+if ((!NESTED)); then
+    if [[ -r $pidfile ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+        echo "junest-session: the desktop is already running" >&2
+        exit 0
+    fi
+    echo $$ >"$pidfile"
+fi
 exec >>"$TMP_ROOT/desktop.log" 2>&1
 echo "=== $(date '+%F %T') starting $DESKTOP on $DISPLAY"
 
-# The display manager already describes a GNOME session (XDG_CURRENT_DESKTOP=ubuntu:GNOME, ...)
-# before ~/.xsessionrc runs: describe ours, and drop GNOME/Ubuntu-only values.
+# GNOME's own environment, to give the session back (gnome-shell --replace).
+gnome_env=$(export -p)
+
+# wm_running: a window manager owns the screen (its _NET_SUPPORTING_WM_CHECK
+# window still exists; the property stays behind when the WM dies).
+wm_running() {
+    local id
+    id=$(xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -o '0x[0-9a-f]*$') || return 1
+    xprop -id "$id" _NET_SUPPORTING_WM_CHECK >/dev/null 2>&1
+}
+
+# gnome_pids: gnome-session's processes. While they are stopped, the
+# gnome-shell that systemd restarts (Restart=always) waits on its session
+# connection and never takes the screen back.
+gnome_pids() { pgrep -u "$USER" -f '^/usr/libexec/gnome-session-(binary|ctl --monitor)'; }
+
+frozen=()
+# take_over: stops GNOME's window manager, keeping the session (and its
+# services, the 42 agent, the keyboard settings) alive underneath.
+take_over() {
+    local pid i
+    pid=$(pgrep -u "$USER" -x gnome-shell) || return 0
+    mapfile -t frozen < <(gnome_pids)
+    ((${#frozen[@]})) || { echo "gnome-shell runs without gnome-session: not taking over"; return 1; }
+    echo "freezing gnome-session (${frozen[*]}), stopping gnome-shell ($pid)"
+    kill -STOP "${frozen[@]}"
+    kill "$pid"
+    for ((i = 0; i < 50; i++)); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+    kill -0 "$pid" 2>/dev/null && kill -KILL "$pid"
+    for ((i = 0; i < 100; i++)); do wm_running || return 0; sleep 0.1; done
+    echo "the screen still has a window manager"
+    return 1
+}
+
+# give_back: resumes GNOME. The pending gnome-shell then finishes starting;
+# if none takes the screen within a few seconds, start one.
+give_back() {
+    local i
+    ((${#frozen[@]})) || return 0
+    echo "resuming GNOME"
+    # shellcheck disable=SC2046  # PIDs
+    kill -CONT "${frozen[@]}" $(gnome_pids) 2>/dev/null
+    frozen=()
+    for ((i = 0; i < 50; i++)); do wm_running && break; sleep 0.1; done
+    if ! wm_running; then
+        echo "no gnome-shell came back: starting one"
+        (eval "$gnome_env"; setsid -f gnome-shell --replace >/dev/null 2>&1)
+    fi
+    refresh_gsd
+}
+
+# refresh_gsd: once gnome-shell answers on D-Bus, restarts (through their
+# Restart=on-failure) the GNOME services the desktop left broken:
+# gsd-xsettings lost _XSETTINGS_S0 to xsettingsd and never takes it back,
+# gsd-media-keys tried to grab the shortcuts (Super+B) while the shell was away.
+refresh_gsd() {
+    local i
+    for ((i = 0; i < 100; i++)); do
+        # (introspect would succeed before the object exists)
+        gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+            --method org.freedesktop.DBus.Properties.Get org.gnome.Shell ShellVersion >/dev/null 2>&1 && break
+        sleep 0.1
+    done
+    systemctl --user kill --signal=KILL org.gnome.SettingsDaemon.XSettings.service \
+        org.gnome.SettingsDaemon.MediaKeys.service || echo "could not restart gsd-xsettings and gsd-media-keys"
+}
+
+if ((!NESTED)) && ! take_over; then
+    give_back
+    rm -f "$pidfile"
+    exit 1
+fi
+if ((${#frozen[@]})); then
+    # If this script dies without its EXIT trap (kill -9), GNOME still comes back.
+    (
+        trap '' HUP INT TERM
+        while kill -0 $$ 2>/dev/null; do sleep 1; done
+        [[ $(cat "$pidfile" 2>/dev/null) == "$$" ]] || exit 0
+        echo "junest-session died: giving GNOME back"
+        give_back
+        rm -f "$pidfile"
+    ) &
+    disown
+fi
+
+# GNOME describes its own session (XDG_CURRENT_DESKTOP=ubuntu:GNOME, ...):
+# describe ours, and drop GNOME/Ubuntu-only values.
 unset SESSION_MANAGER GNOME_DESKTOP_SESSION_ID GNOME_SHELL_SESSION_MODE GDMSESSION \
     XDG_MENU_PREFIX GTK_MODULES QT_IM_MODULE XDG_DATA_DIRS XDG_CONFIG_DIRS
 export XDG_CURRENT_DESKTOP=${DESKTOP_NAME:-$DESKTOP}
@@ -52,17 +156,7 @@ if [[ -r /sys/module/nvidia/version ]] && ! junest-nvidia path >/dev/null 2>&1; 
     fi
 fi
 
-# Units only gnome-session would start (graphical-session.target refuses a
-# manual start), e.g. the 42 nats-user-agent.
-if ((!NESTED)); then
-    systemctl --user import-environment DISPLAY XAUTHORITY 2>/dev/null
-    for unit in /etc/systemd/user/graphical-session.target.wants/*; do
-        [[ -e $unit ]] || continue
-        systemctl --user start "$(basename "$unit")" || echo "could not start $(basename "$unit")"
-    done
-fi
-
-# Keyboard layouts from GNOME settings (gnome-settings-daemon is not running).
+# Keyboard layouts from GNOME settings (gsd-keyboard applies them only on changes).
 # [('xkb', 'fr+us'), ('xkb', 'us')] -> -layout fr,us -variant us,
 if sources=$(gsettings get org.gnome.desktop.input-sources sources 2>/dev/null); then
     layouts="" variants=""
@@ -76,12 +170,12 @@ if sources=$(gsettings get org.gnome.desktop.input-sources sources 2>/dev/null);
     fi
 fi
 
-# Lock bridge: ft_lock is a host binary that can't run inside JuNest; the
-# guest's ft_lock writes "lock" here and the host runs the real one.
-bridge_dir="$XDG_RUNTIME_DIR/42-junest"
+# Host bridge: ft_lock is a host binary that can't run inside JuNest; the
+# guest's ft_lock writes "lock" here and the host runs the real one. The
+# guest's 42desk-logout writes "logout": the whole session ends after the desktop.
 fifo="$bridge_dir/host.fifo"
-install -d -m 700 "$bridge_dir"
-rm -f "$fifo"
+logout_flag="$bridge_dir/logout"
+rm -f "$fifo" "$logout_flag"
 mkfifo -m 600 "$fifo"
 (
     last=0
@@ -95,13 +189,28 @@ mkfifo -m 600 "$fifo"
                     last=$(date +%s)
                     /usr/local/bin/ft_lock &
                     ;;
+                logout) : >"$logout_flag" ;;
                 *) echo "lock bridge: ignored request: $req" ;;
             esac
         done <"$fifo"
     done
 ) &
 bridge_pid=$!
-trap 'kill "$bridge_pid" 2>/dev/null; rm -f "$fifo" "$bridge_dir/session.env"' EXIT
+# shellcheck disable=SC2317  # called by the trap
+finish() {
+    kill "$bridge_pid" 2>/dev/null
+    rm -f "$fifo" "$bridge_dir/session.env"
+    ((NESTED)) && return
+    give_back
+    rm -f "$pidfile"
+    if [[ -e $logout_flag ]]; then
+        rm -f "$logout_flag"
+        echo "logging out"
+        (eval "$gnome_env"; gnome-session-quit --logout --no-prompt) ||
+            loginctl terminate-session "${XDG_SESSION_ID:-}"
+    fi
+}
+trap finish EXIT
 
 # A private session bus, so the desktop's services (xfconfd, ...) start in JuNest.
 # 42desk-start applies the rice and records the session for live rice changes.

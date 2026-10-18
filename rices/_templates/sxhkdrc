@@ -22,13 +22,15 @@ XF86Audio{Raise,Lower}Volume
 XF86AudioMute
 	pactl set-sink-mute @DEFAULT_SINK@ toggle
 
-# Session: reload keys, restart bspwm in place, log out
+# Session: reload keys, restart bspwm in place, back to GNOME, log out
 super + Escape
 	pkill -USR1 -x sxhkd
 super + shift + r
 	bspc wm -r
-super + shift + e
+super + {b,shift + e}
 	bspc quit
+super + ctrl + shift + e
+	42desk-logout; bspc quit
 
 # Windows: close, kill, layout, state
 super + {_,shift + }q

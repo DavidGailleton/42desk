@@ -2,7 +2,7 @@
 
 Your own Linux desktop on a 42 school computer: no root, no sudo, nothing changed on the host.
 
-42desk installs [JuNest](https://github.com/fsquillace/junest) (Arch Linux running in user space) and builds a desktop inside it. The desktop starts right after the login screen, in place of GNOME. You choose the window manager, the look, the apps and the 42 tools from menus. 42desk keeps all of it working: NVIDIA graphics, the 42 lock screen, your goinfre, and your home quota.
+42desk installs [JuNest](https://github.com/fsquillace/junest) (Arch Linux running in user space) and builds a desktop inside it. The desktop takes over from GNOME right after you log in, and you can switch back and forth. You choose the window manager, the look, the apps and the 42 tools from menus. 42desk keeps all of it working: NVIDIA graphics, the 42 lock screen, your goinfre, and your home quota.
 
 | Nord on i3 | 42 on bspwm | Gruvbox on awesome |
 |:-:|:-:|:-:|
@@ -10,7 +10,7 @@ Your own Linux desktop on a 42 school computer: no root, no sudo, nothing change
 
 ## Features
 
-- **A desktop before GNOME:** i3, bspwm, awesome or XFCE. Logging out of it logs you out. If it ever fails to start, GNOME starts as usual, so you're never locked out.
+- **A desktop in place of GNOME:** i3, bspwm, awesome or XFCE. It takes over right after login. Quitting it brings GNOME back, and **Super+B** in GNOME switches to it again. If it ever fails to start, you stay on GNOME, so you're never locked out.
 - **Rices:** five ready-made looks (Nord, Gruvbox, Catppuccin, Tokyo Night, 42), or each desktop's stock look. A rice themes the window manager, the bar (polybar), the launcher (rofi), notifications, GTK apps and terminals. Switch live with **Super+Shift+T**.
 - **Apps by category:** terminals, browsers, editors, file managers, media, PDF, chat, office and command-line tools. Install sizes are shown before anything is downloaded. You can also pick the default app for links, folders, PDFs and media.
 - **42 tools inside:** norminette (pinned to the same version as the school's) and the 42 header for vim and neovim.
@@ -46,7 +46,7 @@ The installer asks, in order:
 6. **The apps,** one category at a time, then the default app for each kind of file.
 7. **The 42 apps:** norminette, the 42 header.
 
-Log out and back in: your desktop starts. If anything goes wrong, GNOME starts instead. Run `42desk doctor` to find out why.
+Press **Super+B**, or log out and back in: your desktop takes over from GNOME. If anything goes wrong, you stay on GNOME. Run `42desk doctor` to find out why.
 
 To install without any question, use a bundled profile:
 
@@ -87,7 +87,9 @@ The i3 and bspwm rices use these keys. awesome keeps its own defaults (Super+S l
 | Super+1…0 | Workspace 1–10 (add Shift to send the window there) |
 | Super+F | Fullscreen |
 | Super+Shift+R | Restart the window manager in place |
-| Super+Shift+E | Log out |
+| Super+B | Back to GNOME (Super+B there comes back) |
+| Super+Shift+E | Quit: back to GNOME (i3 asks: back to GNOME or log out) |
+| Super+Ctrl+Shift+E | Log out (bspwm; awesome: Super+Ctrl+Shift+Q) |
 
 ## Profiles
 
@@ -113,12 +115,11 @@ FT_APPS=norminette header42
 - **Where things live:**
   - **JuNest:** an Arch Linux rootfs in `~/.junest` (or wherever you chose), run with bubblewrap in user namespaces. No root is ever needed.
   - **Commands:** `junest`, `junest-session`, `junest-nvidia` and `42desk` go in `~/.local/bin`. Settings are in `~/.config/42-junest/config`.
-- **At login:** the display manager sources `~/.xsessionrc`. 42desk adds a small marked block there that starts `junest-session`, before GNOME:
+- **At login:** the 42 login screen starts GNOME directly. 42desk adds a GNOME autostart entry (`~/.config/autostart/42desk.desktop`) that runs `junest-session`. The same command runs on **Super+B** and from the "Switch to …" app in GNOME:
   1. It prepares the NVIDIA libraries if needed.
-  2. It starts 42's user services and applies your GNOME keyboard layouts.
-  3. It runs the desktop inside JuNest.
-
-  A normal quit logs you out. A failure, or a quit within 10 seconds, lets GNOME start.
+  2. It pauses GNOME's session and stops GNOME Shell, so your window manager can take the screen. GNOME's services (42's agent, keyboard and sound settings) keep running.
+  3. It applies your GNOME keyboard layouts and runs the desktop inside JuNest.
+  4. When the desktop quits (or crashes), GNOME resumes where you left it. "Log out" in the desktop ends the whole session.
 - **NVIDIA:** the host's driver version is read from `/sys/module/nvidia/version`. The matching userspace libraries are downloaded once to `/goinfre/$USER/junest-nvidia` and mounted into JuNest. Hybrid laptops keep using Intel by default; `prime-run <app>` runs an app on the NVIDIA GPU.
 - **Locking:** lockers running inside JuNest can't check your 42 password. Instead, `ft_lock` inside JuNest asks the host, through a private pipe, to run the real `ft_lock`. 42's idle lock works unchanged.
 - **Space:** pacman's cache, build folders and app caches go to `/tmp/$USER` (private, wiped at reboot). The rootfs never keeps downloaded packages.
@@ -126,11 +127,11 @@ FT_APPS=norminette header42
 
 ## Troubleshooting
 
-- **My desktop doesn't start, I get GNOME.** Run `42desk doctor`: it shows the end of the desktop's log (`/tmp/$USER/desktop.log`). To get GNOME back on purpose, run `touch ~/.config/42-junest/desktop-disabled`, and delete that file to re-enable your desktop.
+- **My desktop doesn't start, I get GNOME.** Run `42desk doctor`: it shows the end of the desktop's log (`/tmp/$USER/desktop.log`). To stay on GNOME at login on purpose, run `touch ~/.config/42-junest/desktop-disabled` (Super+B still works), and delete that file to re-enable it.
 - **I'm on another computer and nothing works.** If you put JuNest in `/goinfre`, it stays on the first computer. Run `./install.sh` and pick "Your saved setup". Graphics drivers for the new computer are prepared automatically at login.
 - **My home is full.** `42desk doctor` shows the usage. The rootfs is usually 2–4 GB; reinstall it in `/goinfre` (`./install.sh`, then choose goinfre), or remove apps with `42desk configure apps`.
 - **The screen looks slow or software-rendered.** `42desk doctor --fix` prepares the NVIDIA libraries, which is needed after a driver update on the host.
-- **Something else.** `42desk doctor --fix` repairs most broken states: wrappers, the login hook, the pacman lock, the cache location, and rice files.
+- **Something else.** `42desk doctor --fix` repairs most broken states: wrappers, the login start and Super+B, the pacman lock, the cache location, and rice files.
 
 ## Uninstall
 
@@ -138,7 +139,7 @@ FT_APPS=norminette header42
 42desk uninstall
 ```
 
-This removes the rootfs, JuNest, the commands, the login hook and the NVIDIA libraries, and puts back the files a rice or the 42 header replaced. Your desktop config folders and your 42desk settings are only deleted if you tick them. Then delete the repo itself: `rm -rf ~/42desk`.
+This removes the rootfs, JuNest, the commands, the login start, the Super+B shortcut and the NVIDIA libraries, and puts back the files a rice or the 42 header replaced. Your desktop config folders and your 42desk settings are only deleted if you tick them. Then delete the repo itself: `rm -rf ~/42desk`.
 
 ## Extending it
 
@@ -149,7 +150,7 @@ Each catalog is plain files; adding one adds a menu entry:
 - **A desktop:** add `desktops/<id>.conf` with its packages, start command and default config.
 - **A profile:** add a `.profile` file to `profiles/`.
 
-`CLAUDE.md` describes the architecture and the rules the code follows. Check scripts with `shellcheck -x install.sh lib/*.sh bin/* guest/* share/xsessionrc desktops/*.conf rices/*/rice.conf`.
+`CLAUDE.md` describes the architecture and the rules the code follows. Check scripts with `shellcheck -x install.sh lib/*.sh bin/* guest/* desktops/*.conf rices/*/rice.conf`.
 
 ## Credits
 

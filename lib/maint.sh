@@ -69,6 +69,8 @@ cmd_update() {
         "$BIN_DIR/junest-nvidia" fetch
     fi
     rice_refresh "$ROOTFS"
+    # Also moves older installs off the ~/.xsessionrc hook.
+    if [[ -n $(config_get DESKTOP) ]]; then set_session_entries 1; else set_session_entries 0; fi
     profile_autosave
     new=$(app_version)
     [[ $new == "$old" ]] || new+=" (was $old)"
@@ -91,12 +93,15 @@ _fix_helpers()   { install_guest_helpers "$ROOTFS"; }
 _fix_lock()      { rm -f "$ROOTFS/var/lib/pacman/db.lck"; }
 _fix_pacman()    { configure_pacman "$ROOTFS"; }
 _fix_nvidia()    { "$BIN_DIR/junest-nvidia" fetch; }
-_fix_hook_on()   { install -d "$SHARE_DIR"; install -m 644 "$REPO_DIR/share/xsessionrc" "$SHARE_DIR/xsessionrc"; _set_login_hook 1; }
-_fix_hook_off()  { _set_login_hook 0; }
+_fix_entries_on()  { set_session_entries 1; }
+_fix_entries_off() { set_session_entries 0; }
+_fix_hook_off()    { _remove_login_hook; }
 _fix_rice()      { rice_refresh "$ROOTFS"; }
 
-# _hook_present: the marked block is in ~/.xsessionrc.
+# _hook_present: the old marked block is in ~/.xsessionrc.
 _hook_present() { [[ -r $XSESSIONRC ]] && grep -qxF "$HOOK_BEGIN" "$XSESSIONRC"; }
+# _entries_present: any of our ways into the desktop is still there.
+_entries_present() { _ours "$AUTOSTART_FILE" || _ours "$LAUNCHER_FILE" || shortcut_present; }
 
 run_checks() {
     local used tmp_mode f w ok desktop rice line rc p
@@ -190,15 +195,18 @@ run_checks() {
     fi
 
     if [[ -n $desktop ]]; then
-        if _hook_present && cmp -s "$REPO_DIR/share/xsessionrc" "$SHARE_DIR/xsessionrc"; then
-            check "login hook" PASS "$desktop starts at login"
+        if session_entries_ok; then
+            check "login start" PASS "$desktop takes over from GNOME at login; $SHORTCUT_KEY switches"
         else
-            check "login hook" FAIL "$desktop is set but won't start at login (~/.xsessionrc)" _fix_hook_on
+            check "login start" FAIL "$desktop is set but the GNOME autostart, launcher or $SHORTCUT_KEY is missing" _fix_entries_on
         fi
-    elif _hook_present; then
-        check "login hook" FAIL "no desktop set, but ~/.xsessionrc still has the 42desk block" _fix_hook_off
+    elif _entries_present; then
+        check "login start" FAIL "no desktop set, but the 42desk autostart, launcher or shortcut is still there" _fix_entries_off
     else
-        check "login hook" PASS "no desktop: GNOME starts"
+        check "login start" PASS "no desktop: GNOME only"
+    fi
+    if _hook_present; then
+        check "old login hook" WARN "$XSESSIONRC still has the old 42desk block (it never runs)" _fix_hook_off
     fi
     if [[ -e $CONFIG_DIR/desktop-disabled ]]; then
         check "desktop disabled" WARN "$CONFIG_DIR/desktop-disabled exists: GNOME starts instead (rm it to re-enable)"
@@ -313,7 +321,7 @@ cmd_uninstall() {
     rootfs=$(config_get JUNEST_HOME)
 
     out=$(ask_checklist "Uninstall" \
-        "Removes JuNest, its rootfs, the desktop's login hook, the rice and 42 header files (your own files come back) and the NVIDIA libraries. Also:" \
+        "Removes JuNest, its rootfs, the desktop's login start and Super+B, the rice and 42 header files (your own files come back) and the NVIDIA libraries. Also:" \
         configs "Delete my desktop config folders (~/.config/i3, bspwm, polybar...)" OFF \
         settings "Delete my 42desk settings and saved profile" OFF) || die "aborted"
     [[ $out == *configs* ]] && drop_configs=1
@@ -328,13 +336,13 @@ cmd_uninstall() {
     ((drop_settings)) && remove+=("$CONFIG_DIR")
     msg="This deletes:"$'\n'
     for p in "${remove[@]}"; do msg+="  $p"$'\n'; done
-    msg+=$'\n'"and the login hook, rice files, 42 header files and default-app files"$'\n'
+    msg+=$'\n'"and the login start and shortcut, rice files, 42 header files and default-app files"$'\n'
     msg+="(your own files come back). The 42desk repo ($REPO_DIR) stays."$'\n\n'"Continue?"
     ((ASSUME_YES)) && printf '%s\n' "$msg" >&2
     ask_yesno "Uninstall" "$msg" || die "aborted"
 
-    log "removing the login hook"
-    _set_login_hook 0
+    log "removing the login start and the $SHORTCUT_KEY shortcut"
+    set_session_entries 0
     rm -rf "$SHARE_DIR"
     if [[ -n $(config_get RICE) || -r $RICE_STATE/files ]]; then
         log "removing the rice files"
@@ -365,6 +373,7 @@ cmd_uninstall() {
     # Anything of ours still there.
     for p in "${OUR_WRAPPERS[@]}"; do [[ -e $BIN_DIR/$p ]] && left+=("$BIN_DIR/$p"); done
     _hook_present && left+=("$XSESSIONRC (42desk block)")
+    _entries_present && left+=("the 42desk autostart, launcher or shortcut")
     [[ -e $rootfs ]] && left+=("$rootfs")
     ((${#left[@]})) && warn "still there: ${left[*]}"
     size=$(free_gib "$HOME")

@@ -134,6 +134,7 @@ status_text() {
         "42desk:" "$(app_version) ($REPO_DIR)" \
         "rootfs:" "${rootfs:-none} ($size)" \
         "desktop:" "$(config_get DESKTOP_NAME | grep . || echo 'none (GNOME)')" \
+        "switch:" "$(if session_entries_ok 2>/dev/null; then echo "at login, and $SHORTCUT_KEY in GNOME"; else echo 'not set up (42desk doctor)'; fi)" \
         "rice:" "$(config_get RICE | grep . || echo stock)" \
         "apps:" "$(config_get APPS | grep . || echo none)" \
         "folders:" "${binds:-none}" \

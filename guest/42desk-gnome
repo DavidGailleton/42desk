@@ -1,0 +1,10 @@
+#!/bin/sh
+# Quits the desktop; junest-session then gives GNOME back (Super+B there
+# comes back). Bound to Super+B in the desktops.
+case ${XDG_CURRENT_DESKTOP:-} in
+    i3) exec i3-msg -q exit ;;
+    bspwm) exec bspc quit ;;
+    awesome) exec awesome-client 'awesome.quit()' ;;
+    XFCE) exec xfce4-session-logout --logout ;;
+    *) echo "42desk-gnome: unknown desktop: ${XDG_CURRENT_DESKTOP:-none}" >&2; exit 1 ;;
+esac

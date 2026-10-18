@@ -1,0 +1,10 @@
+#!/bin/sh
+# Ends the whole login session once the desktop quits (instead of going back
+# to GNOME), through the bridge junest-session runs. Then quit the window manager.
+fifo="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/42-junest/host.fifo"
+if [ ! -p "$fifo" ]; then
+    echo "42desk-logout: bridge not running (start the desktop with junest-session)" >&2
+    exit 1
+fi
+# shellcheck disable=SC2016  # $1 expands in the inner sh
+timeout 2 sh -c 'echo logout >"$1"' _ "$fifo"
