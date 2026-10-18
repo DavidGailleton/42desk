@@ -113,11 +113,12 @@ _render_awesome_rc() {
         echo "-- $RICE_MARK"
         sed -e 's|^beautiful.init(.*)$|beautiful.init(gears.filesystem.get_configuration_dir() .. "theme.lua")|' \
             -e 's/^terminal = "xterm"/terminal = "x-terminal-emulator"/' \
-            -e 's/^\(    awful.tag(.*, s, \)awful.layout.layouts\[1\])$/\1awful.layout.suit.tile)/' "$src"
+            -e 's/^\(    awful.tag(.*, s, \)awful.layout.layouts\[1\])$/\1awful.layout.suit.tile)/' \
+            "${AWESOME_KEYS_SED[@]}" "$src"
         cat <<'LUA'
 
 -- 42desk: lock (through the host), back to GNOME (also Mod4+Shift+q), log out,
--- launcher, rice picker
+-- app search (Mod4+space, Mod4+d), next keyboard layout, rice picker
 root.keys(gears.table.join(root.keys(),
     awful.key({ "Control", "Mod1" }, "l", function() awful.spawn("ft_lock") end,
         { description = "lock screen", group = "42" }),
@@ -128,12 +129,18 @@ root.keys(gears.table.join(root.keys(),
         { description = "log out", group = "42" }),
     awful.key({ modkey }, "d", function() awful.spawn("rofi -show drun") end,
         { description = "app launcher", group = "42" }),
+    awful.key({ modkey }, "space", function() awful.spawn("rofi -show drun") end,
+        { description = "app search", group = "42" }),
+    awful.key({ modkey, "Shift" }, "space", function() awful.spawn("42desk-kbd-next") end,
+        { description = "next keyboard layout", group = "42" }),
     awful.key({ modkey, "Shift" }, "t", function() awful.spawn("42desk-rice-pick") end,
         { description = "change the rice", group = "42" })))
 LUA
     } >"$out"
     grep -q 'get_configuration_dir() .. "theme.lua"' "$out" ||
         die "awesome's rc.lua changed: beautiful.init() was not found"
+    grep -qF "$AWESOME_KEYS_CHECK" "$out" ||
+        die "awesome's rc.lua changed: its Super+Space layout key was not found"
 }
 
 # rice_render <rootfs> <id> <desktop>: renders every file of the manifest for

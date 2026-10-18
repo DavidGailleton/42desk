@@ -45,6 +45,7 @@ Done so far: the `42desk` command and control center, the base install, and all 
   - `prime-run`, `nvidia-smi`
   - `ft_lock`: asks the host to lock
   - `x-terminal-emulator`: `$TERMINAL` or xterm, used by the stock keybindings
+  - `42desk-gnome` (Super+B: quits the WM, back to GNOME), `42desk-logout`, `42desk-kbd-next` (Super+Shift+Space: rotates the `setxkbmap` layout list, the first one is active)
 - `desktops/<id>.conf` is the desktop catalog: `NAME`, `DESC`, `PACKAGES=()`, `START`, and `stock_config <rootfs>`. Adding a file adds a menu entry. `stock_config` copies the guest's default config into `~/.config` **only if missing**, plus the 42 patches (a Ctrl+Alt+L → `ft_lock` shortcut, guest lockers disabled). Switching desktops `pacman -Rns` the old desktop's packages; config folders are never deleted.
 - `apps/NN-<category>.list` is the app catalog. Its header has `# name:` and `# role:`, then one app per line: `id | packages | description`. Ids are unique across files; menus follow the `NN` order.
   - Only official repos (no AUR).
@@ -115,7 +116,7 @@ Done so far: the `42desk` command and control center, the base install, and all 
     1. Fetches the NVIDIA libs if they're missing, with a zenity window.
     2. Takes over from GNOME (above). Its services keep running underneath (the 42 `nats-user-agent`, gsd-*).
     3. Cleans the GNOME variables for the desktop (`XDG_CURRENT_DESKTOP`, `SESSION_MANAGER`, `XDG_DATA_DIRS`, ...).
-    4. Applies the GNOME keyboard layouts with `setxkbmap`.
+    4. Applies the GNOME keyboard layouts with `setxkbmap`, without GNOME's `grp:win_space_toggle`: every desktop (rice and stock, XFCE through xfconf in `42desk-start`) binds Super+Space to `rofi -show drun` (rofi is in `DESKTOP_COMMON`) and Super+Shift+Space to `42desk-kbd-next`. XKB has no `grp:` option for Super+Shift+Space.
     5. Runs `junest -- dbus-run-session -- 42desk-start $DESKTOP_START`. `42desk-start` (guest) writes `$XDG_RUNTIME_DIR/42-junest/session.env` (DISPLAY and the session bus, removed by `junest-session` at exit), runs `42desk-rice-apply start` (X resources, wallpaper, dunst, xsettingsd, picom with glx or xrender, or the XFCE properties), runs the desktop, then `42desk-rice-apply stop-daemons` (also polybar and sxhkd, which would keep their key grabs).
   - Live rice changes: `rice_reload` runs `42desk-rice-apply reload` directly inside the session, or through `junest` with `session.env` from the host; it restarts the WM in place (`i3-msg restart`, `bspc wm -r`, SIGHUP for awesome).
 - **Locking goes through the host.** 42's `ft_lock` is a host binary, and lockers running in the guest can't check the 42 password, so never install i3lock or similar.

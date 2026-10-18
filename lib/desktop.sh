@@ -16,10 +16,19 @@ XSESSIONRC=$HOME/.xsessionrc
 HOOK_BEGIN="# >>> 42-junest >>>"
 HOOK_END="# <<< 42-junest <<<"
 
-# Shared by every desktop: fallback terminal and launcher, fonts, X tools,
-# pgrep/pkill (bspwmrc, rice reloads) and whiptail (42desk in a desktop terminal).
-DESKTOP_COMMON=(xterm dmenu ttf-dejavu xorg-setxkbmap xorg-xrandr xorg-xsetroot xdg-utils
+# Shared by every desktop: fallback terminal, launchers (rofi: the Super+Space
+# app search), fonts, X tools, pgrep/pkill (bspwmrc, rice reloads) and whiptail
+# (42desk in a desktop terminal).
+DESKTOP_COMMON=(xterm dmenu rofi ttf-dejavu xorg-setxkbmap xorg-xrandr xorg-xsetroot xdg-utils
     procps-ng libnewt)
+
+# awesome's default layout keys move from Super(+Shift)+Space to
+# Super+Alt(+Shift)+Space: those are the app search and the layout switch.
+# shellcheck disable=SC2034  # read by lib/rice.sh and desktops/awesome.conf
+AWESOME_KEYS_SED=(-e 's/awful.key({ modkey,           }, "space"/awful.key({ modkey, "Mod1"    }, "space"/'
+    -e 's/awful.key({ modkey, "Shift"   }, "space"/awful.key({ modkey, "Mod1", "Shift" }, "space"/')
+# shellcheck disable=SC2034
+AWESOME_KEYS_CHECK='awful.key({ modkey, "Mod1"    }, "space"'
 
 # desktop_field <id> <VAR>: prints a variable from desktops/<id>.conf.
 desktop_field() {

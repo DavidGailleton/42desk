@@ -1,0 +1,20 @@
+#!/bin/sh
+# Switches to the next keyboard layout (Super+Shift+Space in the desktops).
+# setxkbmap's first layout is the active one: rotate the lists by one. The
+# other settings (model, options) are kept.
+q=$(setxkbmap -query) || exit 1
+layouts=$(printf '%s\n' "$q" | sed -n 's/^layout: *//p')
+variants=$(printf '%s\n' "$q" | sed -n 's/^variant: *//p')
+case $layouts in *,*) ;; *) exit 0 ;; esac
+next=$(printf '%s\n%s\n' "$layouts" "$variants" | awk '
+    NR == 1 { n = split($0, l, ",") }
+    NR == 2 { split($0, v, ",") }
+    END {
+        lo = l[2]; va = v[2]
+        for (i = 3; i <= n; i++) { lo = lo "," l[i]; va = va "," v[i] }
+        print lo "," l[1]; print va "," v[1]
+    }')
+layout=$(printf '%s\n' "$next" | sed -n 1p)
+setxkbmap -layout "$layout" -variant "$(printf '%s\n' "$next" | sed -n 2p)" || exit 1
+command -v notify-send >/dev/null && notify-send -t 1500 "Keyboard" "${layout%%,*}"
+exit 0

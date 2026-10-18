@@ -5,8 +5,10 @@
 # Apps
 super + Return
 	x-terminal-emulator
-super + d
+super + {d,space}
 	rofi -show drun
+super + shift + space
+	42desk-kbd-next
 super + shift + d
 	rofi -show run
 super + Tab
@@ -37,7 +39,7 @@ super + {_,shift + }q
 	bspc node -{c,k}
 super + m
 	bspc desktop -l next
-super + {t,shift + space,f}
+super + {t,s,f}
 	bspc node -t {tiled,floating,fullscreen}
 
 # Focus or move (with shift) in a direction

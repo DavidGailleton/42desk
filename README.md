@@ -73,12 +73,13 @@ After the install, run `42desk` to open the control center, or use the commands 
 
 ### Keys in the riced desktops
 
-The i3 and bspwm rices use these keys. awesome keeps its own defaults (Super+S lists them), plus the 42 additions.
+The i3 and bspwm rices use these keys. awesome keeps its own defaults (Super+S lists them), plus the 42 additions; its layout keys move to Super+Alt+Space. Every desktop, stock ones and XFCE included, also has Super+Space, Super+Shift+Space and Super+B.
 
 | Keys | Action |
 |---|---|
 | Super+Enter | Terminal |
-| Super+D | App launcher (rofi) |
+| Super+Space, or Super+D | Search the installed apps (rofi) |
+| Super+Shift+Space | Next keyboard layout (your GNOME layouts) |
 | Super+Tab | Window switcher |
 | Super+Shift+T | Change the rice |
 | Ctrl+Alt+L | Lock (42's `ft_lock`) |
@@ -86,6 +87,7 @@ The i3 and bspwm rices use these keys. awesome keeps its own defaults (Super+S l
 | Super+H/J/K/L, or the arrows | Move the focus (add Shift to move the window) |
 | Super+1…0 | Workspace 1–10 (add Shift to send the window there) |
 | Super+F | Fullscreen |
+| Super+Ctrl+Space (i3), Super+S (bspwm) | Float the window |
 | Super+Shift+R | Restart the window manager in place |
 | Super+B | Back to GNOME (Super+B there comes back) |
 | Super+Shift+E | Quit: back to GNOME (i3 asks: back to GNOME or log out) |

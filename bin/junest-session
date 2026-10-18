@@ -165,7 +165,9 @@ if sources=$(gsettings get org.gnome.desktop.input-sources sources 2>/dev/null);
         [[ $src == *+* ]] && variants+="${src#*+}," || variants+=","
     done < <(grep -o "'xkb', '[^']*'" <<<"$sources" | cut -d"'" -f4)
     if [[ -n $layouts ]]; then
-        setxkbmap -layout "${layouts%,}" -variant "${variants%,}" -option grp:win_space_toggle ||
+        # No grp: toggle (GNOME's is Super+Space): Super+Space is the app search,
+        # and the desktops bind Super+Shift+Space to 42desk-kbd-next.
+        setxkbmap -layout "${layouts%,}" -variant "${variants%,}" ||
             echo "setxkbmap failed"
     fi
 fi

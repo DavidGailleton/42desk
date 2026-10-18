@@ -9,6 +9,15 @@ printf 'DISPLAY=%s DBUS_SESSION_BUS_ADDRESS=%s\n' "$DISPLAY" "$DBUS_SESSION_BUS_
 
 42desk-rice-apply start
 
+# XFCE's keys live in xfconf: add the 42desk ones, unless the user set these keys.
+if [[ ${XDG_CURRENT_DESKTOP:-} == XFCE ]]; then
+    for kv in '<Super>space=rofi -show drun' '<Super><Shift>space=42desk-kbd-next' '<Super>b=42desk-gnome'; do
+        p="/commands/custom/${kv%%=*}"
+        xfconf-query -c xfce4-keyboard-shortcuts -p "$p" >/dev/null 2>&1 ||
+            xfconf-query -c xfce4-keyboard-shortcuts -p "$p" -n -t string -s "${kv#*=}"
+    done
+fi
+
 "$@"
 rc=$?
 42desk-rice-apply stop-daemons
