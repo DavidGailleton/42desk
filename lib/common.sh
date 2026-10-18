@@ -129,7 +129,8 @@ config_has() { [[ -r $CONFIG_FILE ]] && grep -q "^$1=" "$CONFIG_FILE"; }
 config_get_array() {
     [[ -r $CONFIG_FILE ]] || return 0
     # shellcheck source=/dev/null
-    (. "$CONFIG_FILE" && eval '((${#'"$1"'[@]})) && printf "%s\n" "${'"$1"'[@]}"') || true
+    # ${KEY[@]+set}: an unset KEY would trip set -u.
+    (. "$CONFIG_FILE" && eval '[[ ${'"$1"'[@]+set} ]] && printf "%s\n" "${'"$1"'[@]}"') || true
 }
 
 _config_write_line() {
