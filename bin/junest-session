@@ -46,7 +46,7 @@ fi
 exec >>"$TMP_ROOT/desktop.log" 2>&1
 echo "=== $(date '+%F %T') starting $DESKTOP on $DISPLAY"
 
-# GNOME's own environment, to give the session back (gnome-shell --replace).
+# GNOME's own environment, for gnome-session-quit at logout.
 gnome_env=$(export -p)
 
 # wm_running: a window manager owns the screen (its _NET_SUPPORTING_WM_CHECK
@@ -64,7 +64,8 @@ gnome_pids() { pgrep -u "$USER" -f '^/usr/libexec/gnome-session-(binary|ctl --mo
 
 # The unit's start timeout would kill that waiting gnome-shell every ~95 s and
 # start a new one (a new mutter on the display each time): lift it meanwhile.
-shell_dropin="$XDG_RUNTIME_DIR/systemd/user/org.gnome.Shell@x11.service.d/42desk.conf"
+shell_unit=org.gnome.Shell@x11.service
+shell_dropin="$XDG_RUNTIME_DIR/systemd/user/$shell_unit.d/42desk.conf"
 
 frozen=()
 # take_over: stops GNOME's window manager, keeping the session (and its
@@ -87,8 +88,12 @@ take_over() {
     return 1
 }
 
-# give_back: resumes GNOME. The pending gnome-shell then finishes starting;
-# if none takes the screen within a few seconds, start one.
+shell_state() { systemctl --user show -p ActiveState --value "$shell_unit"; }
+
+# give_back: resumes GNOME. The pending gnome-shell then finishes starting; if
+# its unit fails or it isn't back within 30 s, systemd restarts it. Never a
+# gnome-shell of our own: it fought the unit's, which failed into the start
+# limit, and gnome-session logged out.
 give_back() {
     local i
     ((${#frozen[@]})) || return 0
@@ -96,10 +101,17 @@ give_back() {
     # shellcheck disable=SC2046  # PIDs
     kill -CONT "${frozen[@]}" $(gnome_pids) 2>/dev/null
     frozen=()
-    for ((i = 0; i < 50; i++)); do wm_running && break; sleep 0.1; done
+    for ((i = 0; i < 300; i++)); do
+        wm_running && break
+        [[ $(shell_state) == failed ]] && break
+        sleep 0.1
+    done
     if ! wm_running; then
-        echo "no gnome-shell came back: starting one"
-        (eval "$gnome_env"; setsid -f gnome-shell --replace >/dev/null 2>&1)
+        echo "gnome-shell not back after $((i / 10)) s ($(systemctl --user show \
+            -p ActiveState -p SubState -p NRestarts --value "$shell_unit" | paste -sd' ')): restarting its unit"
+        systemctl --user reset-failed "$shell_unit" 2>/dev/null
+        systemctl --user restart "$shell_unit" ||
+            echo "could not restart $shell_unit"
     fi
     refresh_gsd
     # Only now: on reload, a start still pending past 90 s would be killed.
