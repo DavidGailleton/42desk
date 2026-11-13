@@ -159,3 +159,7 @@ Each catalog is plain files; adding one adds a menu entry:
 - [JuNest](https://github.com/fsquillace/junest) by Filippo Squillace: Arch Linux in user space.
 - The rice palettes follow [Nord](https://www.nordtheme.com/), [Gruvbox](https://github.com/morhetz/gruvbox), [Catppuccin](https://catppuccin.com/) and [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme). The wallpapers are generated from them, with no third-party images.
 - The 42 header comes from [42Paris/42header](https://github.com/42Paris/42header). norminette is installed from PyPI.
+
+## License
+
+[MIT](LICENSE)
